@@ -1,0 +1,46 @@
+
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+
+# VSCode
+.vscode/
+
+# MacOS
+.DS_Store
+
+# Logs
+*.log
+
+# Data / large files (adjust if needed)
+*.csv
+*.parquet
+*.h5
+*.ckpt
+*.pt
+*.pth
+data/raw
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+
+# Misc
+*.swp
+.python-version
