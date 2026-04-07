@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:link.springer.com)",
+      "WebSearch",
+      "Bash(ls \"/Volumes/Seagate \\(MacOS\\)/University/Thesis/\")",
+      "Bash(ls \"/Volumes/Seagate \\(MacOS\\)/University/Thesis/data/\")"
+    ]
+  }
+}
