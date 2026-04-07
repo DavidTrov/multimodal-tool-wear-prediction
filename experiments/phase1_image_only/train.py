@@ -2,11 +2,13 @@
 Phase 1 – image-only baseline (ResNet18).
 
 Usage:
-    python experiments/phase1_image_only/train.py
+    python experiments/phase1_image_only/train.py           # fresh start
+    python experiments/phase1_image_only/train.py --resume  # continue from checkpoint
 
 Run from the thesis root so that `src/` is on the path.
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -30,12 +32,12 @@ RESULTS_DIR = Path(__file__).parent / "results"
 
 LR          = 1e-4
 BATCH_SIZE  = 16
-EPOCHS      = 30
+EPOCHS      = 60
 NUM_WORKERS = 4
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def run():
+def run(resume: bool):
     device = (
         "cuda" if torch.cuda.is_available()
         else "mps" if torch.backends.mps.is_available()
@@ -52,17 +54,38 @@ def run():
     val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
     # Model
-    model = build_resnet18_regressor().to(device)
+    model     = build_resnet18_regressor().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.5, patience=5
+    )
     criterion = nn.MSELoss()
 
     CKPT_DIR.mkdir(exist_ok=True)
     RESULTS_DIR.mkdir(exist_ok=True)
 
-    history = []
+    # ── Resume ──
+    start_epoch  = 1
     best_val_mae = float("inf")
+    history      = []
 
-    for epoch in range(1, EPOCHS + 1):
+    ckpt_path = CKPT_DIR / "phase1_best.pt"
+    if resume:
+        if not ckpt_path.exists():
+            print("No checkpoint found, starting fresh.")
+        else:
+            model.load_state_dict(torch.load(ckpt_path, map_location=device))
+            print(f"Resumed from {ckpt_path}")
+
+        history_path = RESULTS_DIR / "history.json"
+        if history_path.exists():
+            with open(history_path) as f:
+                history = json.load(f)
+            start_epoch  = history[-1]["epoch"] + 1
+            best_val_mae = min(h["val_mae"] for h in history)
+            print(f"Continuing from epoch {start_epoch}  |  Best so far: {best_val_mae:.2f} µm")
+
+    for epoch in range(start_epoch, start_epoch + EPOCHS):
         # ── Train ──
         model.train()
         train_loss = 0.0
@@ -96,26 +119,33 @@ def run():
         val_mae     = mae(all_preds, all_targets)
         val_mae_std = (all_preds - all_targets).abs().std().item()
 
+        scheduler.step(val_mae)
+        current_lr = optimizer.param_groups[0]["lr"]
+
         history.append({
-            "epoch":        epoch,
-            "train_loss":   round(train_loss, 4),
-            "val_mae":      round(val_mae, 4),
-            "val_mae_std":  round(val_mae_std, 4),
+            "epoch":       epoch,
+            "train_loss":  round(train_loss, 4),
+            "val_mae":     round(val_mae, 4),
+            "val_mae_std": round(val_mae_std, 4),
+            "lr":          current_lr,
         })
-        print(f"Epoch {epoch:3d}/{EPOCHS}  train_loss={train_loss:.2f}  val_mae={val_mae:.2f} ± {val_mae_std:.2f} µm")
+        print(f"Epoch {epoch:3d}  train_loss={train_loss:.2f}  val_mae={val_mae:.2f} ± {val_mae_std:.2f} µm  lr={current_lr:.2e}")
 
         if val_mae < best_val_mae:
             best_val_mae = val_mae
-            torch.save(model.state_dict(), CKPT_DIR / "phase1_best.pt")
+            torch.save(model.state_dict(), ckpt_path)
+            print(f"  ✓ New best: {best_val_mae:.2f} µm")
 
-    # Save history
-    with open(RESULTS_DIR / "history.json", "w") as f:
-        json.dump(history, f, indent=2)
+        # Save history after every epoch so it's safe to interrupt
+        with open(RESULTS_DIR / "history.json", "w") as f:
+            json.dump(history, f, indent=2)
 
     print(f"\nBest val MAE: {best_val_mae:.2f} µm")
-    print(f"Checkpoint saved to: {CKPT_DIR / 'phase1_best.pt'}")
-    print(f"History saved to:    {RESULTS_DIR / 'history.json'}")
+    print(f"Checkpoint:  {ckpt_path}")
 
 
 if __name__ == "__main__":
-    run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--resume", action="store_true", help="Continue from last checkpoint")
+    args = parser.parse_args()
+    run(resume=args.resume)
