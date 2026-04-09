@@ -79,9 +79,10 @@ def run():
             feats     = extract_one(sensor_df, sample_id=i)
             all_features.append(feats)
             meta_rows.append({
-                "idx":  i,
-                "Set":  int(row["Set"]),
-                "wear": float(row["wear"]),
+                "labels_idx": i,
+                "Set":        int(row["Set"]),
+                "wear":       float(row["wear"]),
+                "ImageFile":  str(row["ImageFile"]) if pd.notna(row["ImageFile"]) else "",
             })
         except Exception as e:
             print(f"  Skipping {sensor_path.name}: {e}")
@@ -97,8 +98,10 @@ def run():
     meta = pd.DataFrame(meta_rows).reset_index(drop=True)
 
     # Attach metadata as columns
-    X["Set"]  = meta["Set"].values
-    X["wear"] = meta["wear"].values
+    X["labels_idx"] = meta["labels_idx"].values
+    X["Set"]        = meta["Set"].values
+    X["wear"]       = meta["wear"].values
+    X["ImageFile"]  = meta["ImageFile"].values
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     X.to_parquet(OUT_PATH)
