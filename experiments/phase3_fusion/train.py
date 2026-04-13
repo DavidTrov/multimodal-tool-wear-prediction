@@ -33,7 +33,7 @@ RESULTS_DIR   = Path(__file__).parent / "results"
 LR          = 1e-4
 BATCH_SIZE  = 16
 EPOCHS      = 60
-NUM_WORKERS = 4
+NUM_WORKERS = 0
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -53,8 +53,14 @@ def run(resume: bool):
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True,  num_workers=NUM_WORKERS)
     val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
+    # Compute sensor feature statistics from training set (used for runtime normalisation)
+    all_sensor = torch.stack([train_ds[i][1] for i in range(len(train_ds))])
+    sensor_mean = all_sensor.mean(dim=0)
+    sensor_std  = all_sensor.std(dim=0)
+    print(f"Sensor stats computed from {len(train_ds)} training samples")
+
     # Model
-    model = FusionModel().to(device)
+    model = FusionModel(sensor_mean=sensor_mean, sensor_std=sensor_std).to(device)
 
     # Bootstrap image encoder from Phase 1 fine-tuned weights
     phase1_ckpt = CKPT_DIR / "phase1_best.pt"
@@ -73,7 +79,14 @@ def run(resume: bool):
     else:
         print("Phase 1 checkpoint not found — using ImageNet weights only")
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    # Freeze the image encoder — only train sensor branch + fusion head
+    for param in model.image_encoder.parameters():
+        param.requires_grad = False
+    print("Image encoder frozen")
+
+    optimizer = torch.optim.Adam(
+        filter(lambda p: p.requires_grad, model.parameters()), lr=LR
+    )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=5
     )
