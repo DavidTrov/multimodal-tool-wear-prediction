@@ -62,6 +62,7 @@ class MATWIFusionDataset(Dataset):
             self._crops[set_num] = _parse_crop(row["crop"])
 
         self.feats = feats
+
         self.transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(),
