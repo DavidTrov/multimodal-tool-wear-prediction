@@ -29,7 +29,6 @@ env/
 *.parquet
 *.h5
 *.ckpt
-*.pt
 *.pth
 data/raw
 
