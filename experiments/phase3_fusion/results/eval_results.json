@@ -2,25 +2,25 @@
   "train": {
     "split": "train",
     "n_samples": 647,
-    "mae": 34.62,
-    "mae_std": 28.86,
-    "mae_min": 0.31,
-    "mae_max": 424.05
+    "mae": 13.36,
+    "mae_std": 24.56,
+    "mae_min": 0.0,
+    "mae_max": 491.51
   },
   "val": {
     "split": "val",
     "n_samples": 300,
-    "mae": 47.84,
-    "mae_std": 42.81,
-    "mae_min": 0.03,
-    "mae_max": 187.16
+    "mae": 41.04,
+    "mae_std": 53.74,
+    "mae_min": 0.02,
+    "mae_max": 199.97
   },
   "test": {
     "split": "test",
     "n_samples": 247,
-    "mae": 42.57,
-    "mae_std": 39.42,
-    "mae_min": 0.24,
-    "mae_max": 132.24
+    "mae": 23.54,
+    "mae_std": 19.08,
+    "mae_min": 0.19,
+    "mae_max": 164.26
   }
 }
