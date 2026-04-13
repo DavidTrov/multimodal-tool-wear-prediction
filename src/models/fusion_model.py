@@ -22,12 +22,37 @@ class SensorEncoder(nn.Module):
         return self.net(x)
 
 
+class ModalityGating(nn.Module):
+    """
+    Learns a scalar gate per modality: how much to trust image vs sensor.
+
+    Given both feature vectors, outputs two weights that sum to 1 (softmax).
+    Each modality is scaled by its weight before concatenation.
+
+    With only 2050 parameters this adds negligible size.
+    """
+
+    def __init__(self, img_dim: int, sensor_dim: int):
+        super().__init__()
+        self.gate = nn.Sequential(
+            nn.Linear(img_dim + sensor_dim, 2),
+            nn.Softmax(dim=1),
+        )
+
+    def forward(self, img_feat: torch.Tensor, sensor_feat: torch.Tensor):
+        weights    = self.gate(torch.cat([img_feat, sensor_feat], dim=1))  # (B, 2)
+        img_w      = weights[:, 0].unsqueeze(1)   # (B, 1)
+        sensor_w   = weights[:, 1].unsqueeze(1)   # (B, 1)
+        return img_feat * img_w, sensor_feat * sensor_w
+
+
 class FusionModel(nn.Module):
     """
     Multimodal fusion model for tool wear regression.
 
     Image branch:  pretrained ResNet18 → 512-dim (unchanged)
     Sensor branch: normalise inputs → MLP → 64-dim → projection → 128-dim
+    Gating:        learned per-sample weights → scale each modality
     Fusion head:   concat(512 + 128) → MLP → scalar wear prediction
 
     sensor_mean / sensor_std are pre-computed from the training set and
@@ -73,6 +98,9 @@ class FusionModel(nn.Module):
         self.image_norm  = nn.LayerNorm(image_out_dim)
         self.sensor_norm = nn.LayerNorm(proj_dim)
 
+        # Gating — learned per-sample modality weights
+        self.gating = ModalityGating(image_out_dim, proj_dim)
+
         # Fusion head
         self.fusion_head = nn.Sequential(
             nn.Linear(image_out_dim + proj_dim, 256),
@@ -89,5 +117,6 @@ class FusionModel(nn.Module):
 
         img_feat    = self.image_norm(self.image_encoder(image))                      # (B, 512)
         sensor_feat = self.sensor_norm(self.sensor_proj(self.sensor_encoder(sensor))) # (B, 128)
+        img_feat, sensor_feat = self.gating(img_feat, sensor_feat)                   # scaled by learned weights
         fused       = torch.cat([img_feat, sensor_feat], dim=1)                       # (B, 640)
         return self.fusion_head(fused)                                                # (B, 1)
