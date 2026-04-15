@@ -5,85 +5,42 @@ from torchvision.models import ResNet18_Weights, resnet18
 SENSOR_INPUT_DIM = 50
 
 
-class SensorEncoder(nn.Module):
-    """Small MLP that embeds tsfresh features into a 128-dim vector."""
-
-    def __init__(self, input_dim: int = SENSOR_INPUT_DIM, embed_dim: int = 128):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, 128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(128, embed_dim),
-            nn.ReLU(),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
-
-
-class SEBlock(nn.Module):
-    """
-    Squeeze-and-Excitation channel attention, adapted from MDFNet.
-
-    Applied to the concatenated [image + sensor] feature vector after fusion.
-    Each of the `in_dim` channels gets its own independent sigmoid gate in
-    [0, 1] — no zero-sum competition between modalities.
-
-    Architecture:
-        [in_dim] → Linear(in_dim → in_dim // reduction) → ReLU
-                 → Linear(in_dim // reduction → in_dim) → Sigmoid
-                 → elementwise scale of input
-    """
-
-    def __init__(self, in_dim: int, reduction: int = 8):
-        super().__init__()
-        self.se = nn.Sequential(
-            nn.Linear(in_dim, in_dim // reduction),
-            nn.ReLU(),
-            nn.Linear(in_dim // reduction, in_dim),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x * self.se(x)   # elementwise scale — (B, in_dim)
-
-
 class FusionModel(nn.Module):
     """
-    Multimodal fusion model for tool wear regression — SE-attention variant.
-
-    Inspired by MDFNet (Chen et al. 2022): concatenate modality features,
-    then apply independent sigmoid channel attention (SE block) so each
-    feature dimension is weighted on its own merit — no zero-sum softmax
-    competition between modalities.
+    Decision-level fusion: each modality makes an independent scalar prediction,
+    then a learned linear blend combines them.
 
     Architecture
     ------------
-    Image branch  : pretrained ResNet18 → LayerNorm → 512-dim
-    Sensor branch : normalise → MLP → LayerNorm → 128-dim
-    Fusion        : Concat [640] → SE channel attention → [640]
-    Head          : MLP [640 → 256 → 64 → 1]
+    Image branch  : pretrained ResNet18 + Phase-1 regression head (frozen)
+                    → P_img  (scalar wear estimate)
+    Sensor branch : Linear(50 → 1)  (tiny, cannot overfit)
+                    → P_sensor (scalar wear estimate)
+    Blend         : Linear(2 → 1)   (learns w_img, w_sensor, bias — 3 params)
+                    → P_final
 
-    sensor_mean / sensor_std are pre-computed from the training set and
-    registered as buffers so normalisation is baked into the model.
+    Trainable parameters: sensor head (51) + blend (3) = 54 total.
+    With 647 training samples this ratio is safe by any standard.
+
+    The blend layer is initialised so that at epoch 0 the model outputs
+    the image-only prediction (w_img=1, w_sensor=0, bias=0).  Training
+    then learns how much — if at all — to trust the sensor estimate.
+
+    sensor_mean / sensor_std are registered as buffers (not trained).
     """
 
     def __init__(
         self,
         sensor_input_dim: int = SENSOR_INPUT_DIM,
-        sensor_embed_dim: int = 128,
         sensor_mean: torch.Tensor | None = None,
         sensor_std:  torch.Tensor | None = None,
     ):
         super().__init__()
 
-        # ── Image branch ──────────────────────────────────────────────────────
+        # ── Image branch (frozen after Phase-1 weights are loaded) ────────────
         backbone = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        image_out_dim = backbone.fc.in_features   # 512
-        backbone.fc = nn.Identity()
-        self.image_encoder = backbone
-        self.image_norm    = nn.LayerNorm(image_out_dim)
+        backbone.fc = nn.Linear(backbone.fc.in_features, 1)
+        self.image_model = backbone        # full model, including regression head
 
         # ── Sensor normalisation buffers ──────────────────────────────────────
         if sensor_mean is None:
@@ -93,31 +50,26 @@ class FusionModel(nn.Module):
         self.register_buffer("sensor_mean", sensor_mean)
         self.register_buffer("sensor_std",  sensor_std)
 
-        # ── Sensor branch ─────────────────────────────────────────────────────
-        self.sensor_encoder = SensorEncoder(sensor_input_dim, sensor_embed_dim)
-        self.sensor_norm    = nn.LayerNorm(sensor_embed_dim)
+        # ── Sensor branch: single linear layer, 51 parameters ─────────────────
+        self.sensor_head = nn.Linear(sensor_input_dim, 1)
 
-        # ── SE channel attention on fused vector ──────────────────────────────
-        fused_dim = image_out_dim + sensor_embed_dim   # 640
-        self.se_block = SEBlock(fused_dim, reduction=16)
-
-        # ── Fusion head (640 → 1) ─────────────────────────────────────────────
-        self.fusion_head = nn.Sequential(
-            nn.Linear(fused_dim, 256),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(256, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1),
-        )
+        # ── Blend: learned weighted average of the two scalar predictions ─────
+        # Initialised to image-only (w_img=1, w_sensor=0, bias=0) so training
+        # starts from the known-good Phase-1 baseline and only moves away if
+        # the sensor signal genuinely helps.
+        self.blend = nn.Linear(2, 1)
+        nn.init.constant_(self.blend.weight, 0.0)   # both weights start at 0
+        nn.init.constant_(self.blend.bias,   0.0)
+        with torch.no_grad():
+            self.blend.weight[0, 0] = 1.0            # w_img  = 1
+            # w_sensor stays 0 — model starts as image-only
 
     def forward(self, image: torch.Tensor, sensor: torch.Tensor) -> torch.Tensor:
-        # Normalise sensor inputs using training-set statistics
+        # Normalise sensor inputs
         sensor = (sensor - self.sensor_mean) / (self.sensor_std + 1e-8)
 
-        img_feat    = self.image_norm(self.image_encoder(image))   # (B, 512)
-        sensor_feat = self.sensor_norm(self.sensor_encoder(sensor)) # (B, 128)
+        p_img    = self.image_model(image)      # (B, 1)
+        p_sensor = self.sensor_head(sensor)     # (B, 1)
 
-        fused   = torch.cat([img_feat, sensor_feat], dim=1)        # (B, 640)
-        fused   = self.se_block(fused)                             # (B, 640) — attended
-        return self.fusion_head(fused)                             # (B, 1)
+        combined = torch.cat([p_img, p_sensor], dim=1)   # (B, 2)
+        return self.blend(combined)                       # (B, 1)
