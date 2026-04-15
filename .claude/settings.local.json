@@ -3,8 +3,8 @@
     "allow": [
       "WebFetch(domain:link.springer.com)",
       "WebSearch",
-      "Bash(ls \"/Volumes/Seagate \\(MacOS\\)/University/Thesis/\")",
-      "Bash(ls \"/Volumes/Seagate \\(MacOS\\)/University/Thesis/data/\")"
+      "Bash(ls \"/Users/david/Projects/University/Maastricht University/Thesis/\")",
+      "Bash(ls \"/Users/david/Projects/University/Maastricht University/Thesis/data/\")"
     ]
   }
 }

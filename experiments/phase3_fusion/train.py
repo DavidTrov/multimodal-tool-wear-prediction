@@ -85,7 +85,7 @@ def run(resume: bool):
     print("Image encoder frozen")
 
     optimizer = torch.optim.Adam(
-        filter(lambda p: p.requires_grad, model.parameters()), lr=LR
+        filter(lambda p: p.requires_grad, model.parameters()), lr=LR, weight_decay=1e-4
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=5
