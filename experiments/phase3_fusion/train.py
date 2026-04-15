@@ -62,30 +62,21 @@ def run(resume: bool):
     # Model
     model = FusionModel(sensor_mean=sensor_mean, sensor_std=sensor_std).to(device)
 
-    # Bootstrap image encoder from Phase 1 fine-tuned weights
+    # Load full Phase 1 model (backbone + regression head) into image branch
     phase1_ckpt = CKPT_DIR / "phase1_best.pt"
     if phase1_ckpt.exists():
-        phase1_state = torch.load(phase1_ckpt, map_location=device)
-        # Phase 1 model has an fc head (fc.weight, fc.bias) — skip those,
-        # copy everything else (all conv/bn layers) into the image encoder
-        encoder_state = model.image_encoder.state_dict()
-        transferred = {
-            k: v for k, v in phase1_state.items()
-            if k in encoder_state and v.shape == encoder_state[k].shape
-        }
-        encoder_state.update(transferred)
-        model.image_encoder.load_state_dict(encoder_state)
-        print(f"Transferred {len(transferred)}/{len(phase1_state)} layers from Phase 1 checkpoint")
+        model.image_model.load_state_dict(torch.load(phase1_ckpt, map_location=device))
+        print(f"Loaded Phase 1 weights (backbone + head) from {phase1_ckpt}")
     else:
         print("Phase 1 checkpoint not found — using ImageNet weights only")
 
-    # Freeze the image encoder — only train sensor branch + fusion head
-    for param in model.image_encoder.parameters():
+    # Freeze image branch entirely — it is already a calibrated predictor
+    for param in model.image_model.parameters():
         param.requires_grad = False
-    print("Image encoder frozen")
+    print("Image model frozen")
 
     optimizer = torch.optim.Adam(
-        filter(lambda p: p.requires_grad, model.parameters()), lr=LR, weight_decay=1e-4
+        filter(lambda p: p.requires_grad, model.parameters()), lr=LR
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=5
