@@ -19,7 +19,7 @@ from src.data.fusion_dataset import MATWIFusionDataset
 from src.models.fusion_model import FusionModel
 
 DATA_ROOT     = ROOT / "data" / "raw"
-FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features.parquet"
+FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
 CKPT_PATH     = ROOT / "checkpoints" / "phase3_best.pt"
 RESULTS_DIR   = Path(__file__).parent / "results"
 BATCH_SIZE    = 16

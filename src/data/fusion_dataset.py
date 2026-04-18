@@ -7,22 +7,15 @@ from torchvision import transforms
 
 from src.data.dataset import SPLIT_MAP, IMAGENET_MEAN, IMAGENET_STD, _parse_crop
 
+_CHANNELS   = ["acc", "acoustic", "fx", "fy", "fz"]
+_TIME_FEATS = ["rms", "kurtosis", "crest_factor", "skewness", "shape_factor"]
+_FFT_FEATS  = [f"fft_band_{i}" for i in range(8)] + ["spectral_centroid", "hf_energy_ratio"]
+_WAV_FEATS  = ["wavelet_a4", "wavelet_d4", "wavelet_d3", "wavelet_d2", "wavelet_d1"]
+
 FEATURE_COLS = [
-    "acc__sum_values", "acc__median", "acc__mean", "acc__length",
-    "acc__standard_deviation", "acc__variance", "acc__root_mean_square",
-    "acc__maximum", "acc__absolute_maximum", "acc__minimum",
-    "acoustic__sum_values", "acoustic__median", "acoustic__mean", "acoustic__length",
-    "acoustic__standard_deviation", "acoustic__variance", "acoustic__root_mean_square",
-    "acoustic__maximum", "acoustic__absolute_maximum", "acoustic__minimum",
-    "fx__sum_values", "fx__median", "fx__mean", "fx__length",
-    "fx__standard_deviation", "fx__variance", "fx__root_mean_square",
-    "fx__maximum", "fx__absolute_maximum", "fx__minimum",
-    "fy__sum_values", "fy__median", "fy__mean", "fy__length",
-    "fy__standard_deviation", "fy__variance", "fy__root_mean_square",
-    "fy__maximum", "fy__absolute_maximum", "fy__minimum",
-    "fz__sum_values", "fz__median", "fz__mean", "fz__length",
-    "fz__standard_deviation", "fz__variance", "fz__root_mean_square",
-    "fz__maximum", "fz__absolute_maximum", "fz__minimum",
+    f"{ch}__{feat}"
+    for ch in _CHANNELS
+    for feat in _TIME_FEATS + _FFT_FEATS + _WAV_FEATS
 ]
 
 
@@ -82,8 +75,9 @@ class MATWIFusionDataset(Dataset):
         image    = image.crop(self._crops[set_num])
         image    = self.transform(image)
 
-        # Sensor features
+        # Sensor features — nan_to_num guards against any NaN/Inf in extracted features
         sensor = torch.tensor(row[FEATURE_COLS].values.astype("float32"), dtype=torch.float32)
+        sensor = torch.nan_to_num(sensor, nan=0.0, posinf=0.0, neginf=0.0)
 
         wear = torch.tensor(float(row["wear"]), dtype=torch.float32)
 

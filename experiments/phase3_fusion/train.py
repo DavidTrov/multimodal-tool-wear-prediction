@@ -26,7 +26,7 @@ from src.utils.metrics import mae
 
 # ── Config ────────────────────────────────────────────────────────────────────
 DATA_ROOT     = ROOT / "data" / "raw"
-FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features.parquet"
+FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
 CKPT_DIR      = ROOT / "checkpoints"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
