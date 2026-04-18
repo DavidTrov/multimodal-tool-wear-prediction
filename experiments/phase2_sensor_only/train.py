@@ -21,7 +21,7 @@ import joblib
 from xgboost import XGBRegressor
 
 ROOT        = Path(__file__).resolve().parents[2]
-FEATURES    = ROOT / "data" / "processed" / "sensor_features.parquet"
+FEATURES    = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
 RESULTS_DIR = Path(__file__).parent / "results"
 CKPT_DIR    = ROOT / "checkpoints"
 
@@ -31,7 +31,7 @@ TEST_SETS  = [4, 9, 13]
 
 
 def split_data(df: pd.DataFrame):
-    feature_cols = [c for c in df.columns if c not in ("Set", "wear")]
+    feature_cols = [c for c in df.columns if c not in ("Set", "wear", "ImageFile", "labels_idx")]
 
     train = df[df["Set"].isin(TRAIN_SETS)]
     val   = df[df["Set"].isin(VAL_SETS)]

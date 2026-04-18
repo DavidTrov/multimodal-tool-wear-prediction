@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torchvision.models import ResNet18_Weights, resnet18
 
-SENSOR_INPUT_DIM = 50
+SENSOR_INPUT_DIM = 100   # 20 physics features × 5 channels (FFT + wavelet + time-domain)
 
 
 class FusionModel(nn.Module):
@@ -13,20 +13,20 @@ class FusionModel(nn.Module):
     Architecture
     ------------
     Image branch  : pretrained ResNet18 + Phase-1 regression head (frozen)
-                    → P_img  (scalar wear estimate)
-    Sensor branch : Linear(50 → 1)  (tiny, cannot overfit)
-                    → P_sensor (scalar wear estimate)
-    Blend         : Linear(2 → 1)   (learns w_img, w_sensor, bias — 3 params)
+                    → P_img  (scalar wear estimate, µm)
+    Sensor branch : Linear(sensor_input_dim → 1)
+                    → P_sensor (scalar wear estimate, µm)
+    Blend         : Linear(2 → 1) — learns w_img, w_sensor, bias
                     → P_final
 
-    Trainable parameters: sensor head (51) + blend (3) = 54 total.
-    With 647 training samples this ratio is safe by any standard.
+    Trainable parameters: sensor_input_dim + 1 (sensor head) + 3 (blend).
+    With 100 physics features: 104 total trainable parameters.
 
-    The blend layer is initialised so that at epoch 0 the model outputs
-    the image-only prediction (w_img=1, w_sensor=0, bias=0).  Training
-    then learns how much — if at all — to trust the sensor estimate.
+    The blend is initialised so the model starts as pure image-only
+    (w_img=1, w_sensor=0, bias=0).  Training moves away from that only
+    if the sensor prediction genuinely reduces the loss.
 
-    sensor_mean / sensor_std are registered as buffers (not trained).
+    sensor_mean / sensor_std are registered as buffers for input normalisation.
     """
 
     def __init__(
@@ -40,7 +40,7 @@ class FusionModel(nn.Module):
         # ── Image branch (frozen after Phase-1 weights are loaded) ────────────
         backbone = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
         backbone.fc = nn.Linear(backbone.fc.in_features, 1)
-        self.image_model = backbone        # full model, including regression head
+        self.image_model = backbone
 
         # ── Sensor normalisation buffers ──────────────────────────────────────
         if sensor_mean is None:
@@ -50,22 +50,18 @@ class FusionModel(nn.Module):
         self.register_buffer("sensor_mean", sensor_mean)
         self.register_buffer("sensor_std",  sensor_std)
 
-        # ── Sensor branch: single linear layer, 51 parameters ─────────────────
+        # ── Sensor branch: single linear layer ────────────────────────────────
         self.sensor_head = nn.Linear(sensor_input_dim, 1)
 
-        # ── Blend: learned weighted average of the two scalar predictions ─────
-        # Initialised to image-only (w_img=1, w_sensor=0, bias=0) so training
-        # starts from the known-good Phase-1 baseline and only moves away if
-        # the sensor signal genuinely helps.
+        # ── Blend: learned weighted average of the two predictions ────────────
+        # Initialised to image-only (w_img=1, w_sensor=0, bias=0)
         self.blend = nn.Linear(2, 1)
-        nn.init.constant_(self.blend.weight, 0.0)   # both weights start at 0
+        nn.init.constant_(self.blend.weight, 0.0)
         nn.init.constant_(self.blend.bias,   0.0)
         with torch.no_grad():
-            self.blend.weight[0, 0] = 1.0            # w_img  = 1
-            # w_sensor stays 0 — model starts as image-only
+            self.blend.weight[0, 0] = 1.0   # w_img = 1 at init
 
     def forward(self, image: torch.Tensor, sensor: torch.Tensor) -> torch.Tensor:
-        # Normalise sensor inputs
         sensor = (sensor - self.sensor_mean) / (self.sensor_std + 1e-8)
 
         p_img    = self.image_model(image)      # (B, 1)
