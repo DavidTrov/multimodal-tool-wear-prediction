@@ -22,7 +22,7 @@ from src.models.scalogram_fusion_model import ScalogramFusionModel
 DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_PATH     = ROOT / "checkpoints" / "phase3b_scalogram_best.pt"
+CKPT_PATH     = ROOT / "checkpoints" / "phase3c_scalogram_joint_best.pt"
 RESULTS_DIR   = Path(__file__).parent / "results_scalogram"
 BATCH_SIZE    = 16
 NUM_WORKERS   = 0
