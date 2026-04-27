@@ -1,8 +1,10 @@
 """
-Phase 3 – test set evaluation for fusion model.
+Phase 3 – test-set evaluation for the multimodal fusion model.
 
 Usage:
     python experiments/phase3_fusion/evaluate.py
+
+Run from the thesis root.
 """
 
 import json
@@ -10,33 +12,40 @@ import sys
 from pathlib import Path
 
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.data.fusion_dataset import MATWIFusionDataset
-from src.models.fusion_model import FusionModel
+from src.data.scalogram_dataset import MATWIScalogramDataset
+from src.models.scalogram_fusion_model import ScalogramFusionModel
 
 DATA_ROOT     = ROOT / "data" / "raw"
+SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
 CKPT_PATH     = ROOT / "checkpoints" / "phase3_best.pt"
 RESULTS_DIR   = Path(__file__).parent / "results"
 BATCH_SIZE    = 16
-NUM_WORKERS   = 4
+NUM_WORKERS   = 0
+
+
+def load_model(device):
+    model = ScalogramFusionModel().to(device)
+    model.image_encoder.fc = nn.Identity()
+    model.load_state_dict(torch.load(CKPT_PATH, map_location=device))
+    model.eval()
+    return model
 
 
 def evaluate(split: str, model, device):
-    ds     = MATWIFusionDataset(DATA_ROOT, FEATURES_PATH, split=split)
+    ds     = MATWIScalogramDataset(DATA_ROOT, SCALOGRAM_DIR, FEATURES_PATH, split=split)
     loader = DataLoader(ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
     all_preds, all_targets = [], []
-    model.eval()
     with torch.no_grad():
-        for images, sensors, targets in loader:
-            images  = images.to(device)
-            sensors = sensors.to(device)
-            preds   = model(images, sensors).squeeze(1).cpu()
+        for images, scalograms, targets in loader:
+            preds = model(images.to(device), scalograms.to(device))[0].squeeze(1).cpu()
             all_preds.append(preds)
             all_targets.append(targets)
 
@@ -60,20 +69,32 @@ def run():
         else "mps" if torch.backends.mps.is_available()
         else "cpu"
     )
+    print(f"Device: {device}")
 
-    model = FusionModel().to(device)
-    model.load_state_dict(torch.load(CKPT_PATH, map_location=device))
-    print(f"Loaded checkpoint: {CKPT_PATH}\n")
+    if not CKPT_PATH.exists():
+        sys.exit(f"Checkpoint not found: {CKPT_PATH}\nRun train.py first.")
+
+    model = load_model(device)
+    print(f"Loaded: {CKPT_PATH}\n")
+
+    W = model.head.weight.data.cpu().squeeze()
+    print(f"Head weight norms — image(512d): {W[:512].norm():.4f}  "
+          f"sensor(64d): {W[512:].norm():.4f}\n")
 
     results = {}
     for split in ("train", "val", "test"):
         r = evaluate(split, model, device)
         results[split] = r
-        print(f"{split:5s}  n={r['n_samples']:4d}  MAE={r['mae']:.2f} ± {r['mae_std']:.2f} µm  (min={r['mae_min']:.2f}, max={r['mae_max']:.2f})")
+        print(
+            f"{split:5s}  n={r['n_samples']:4d}  "
+            f"MAE={r['mae']:.2f} ± {r['mae_std']:.2f} µm  "
+            f"(min={r['mae_min']:.2f}, max={r['mae_max']:.2f})"
+        )
 
-    print(f"\nPhase 1 image-only  test MAE: 23.17 µm")
-    print(f"Phase 2 sensor-only test MAE: 28.25 µm")
-    print(f"Paper baseline:               19.00 µm")
+    print(f"\n─── Baselines ───────────────────────────────")
+    print(f"Phase 1 image-only  test MAE : 23.17 µm")
+    print(f"Phase 2 sensor-only test MAE : 28.25 µm")
+    print(f"Paper baseline               : 19.00 µm")
 
     RESULTS_DIR.mkdir(exist_ok=True)
     out = RESULTS_DIR / "eval_results.json"
