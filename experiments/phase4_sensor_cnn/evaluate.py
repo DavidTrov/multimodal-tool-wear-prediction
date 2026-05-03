@@ -2,13 +2,11 @@
 Phase 4 — test-set evaluation for the sensor-only CWT scalogram CNN.
 
 Usage:
-    python experiments/phase4_sensor_cnn/evaluate.py                    # multiscale (default)
-    python experiments/phase4_sensor_cnn/evaluate.py --arch simple      # simple stack
+    python experiments/phase4_sensor_cnn/evaluate.py
 
 Run from the thesis root.
 """
 
-import argparse
 import json
 import sys
 from pathlib import Path
@@ -20,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.data.sensor_scalogram_dataset import MATWISensorScalogramDataset
-from src.models.sensor_cnn_model import SensorCNNRegressor, MultiScaleSensorCNN
+from src.models.sensor_cnn_model import SensorCNNRegressor
 
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
@@ -29,16 +27,9 @@ RESULTS_DIR   = Path(__file__).parent / "results"
 BATCH_SIZE    = 16
 NUM_WORKERS   = 0
 
-ARCH_FACTORY = {
-    "simple":      SensorCNNRegressor,
-    "multiscale":  MultiScaleSensorCNN,
-}
-
 
 def evaluate(split: str, model, device):
-    ds = MATWISensorScalogramDataset(
-        SCALOGRAM_DIR, FEATURES_PATH, split=split, augment=False,
-    )
+    ds = MATWISensorScalogramDataset(SCALOGRAM_DIR, FEATURES_PATH, split=split)
     loader = DataLoader(ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
     all_preds, all_targets = [], []
@@ -63,20 +54,19 @@ def evaluate(split: str, model, device):
     }
 
 
-def run(arch: str):
+def run():
     device = (
         "cuda" if torch.cuda.is_available()
         else "mps" if torch.backends.mps.is_available()
         else "cpu"
     )
-    print(f"Device      : {device}")
-    print(f"Architecture: {arch}")
+    print(f"Device: {device}")
 
-    ckpt_path = CKPT_DIR / f"phase4_{arch}_best.pt"
+    ckpt_path = CKPT_DIR / "phase4_best.pt"
     if not ckpt_path.exists():
         sys.exit(f"Checkpoint not found: {ckpt_path}\nRun train.py first.")
 
-    model = ARCH_FACTORY[arch]().to(device)
+    model = SensorCNNRegressor().to(device)
     model.load_state_dict(torch.load(ckpt_path, map_location=device))
     model.eval()
     print(f"Loaded: {ckpt_path}")
@@ -101,15 +91,11 @@ def run(arch: str):
     print(f"Paper baseline               : 19.00 µm")
 
     RESULTS_DIR.mkdir(exist_ok=True)
-    out = RESULTS_DIR / f"eval_{arch}_results.json"
+    out = RESULTS_DIR / "eval_results.json"
     with open(out, "w") as f:
         json.dump(results, f, indent=2)
     print(f"\nSaved to {out}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--arch", type=str, default="multiscale",
-                        choices=list(ARCH_FACTORY.keys()))
-    args = parser.parse_args()
-    run(arch=args.arch)
+    run()
