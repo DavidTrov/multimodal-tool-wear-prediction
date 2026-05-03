@@ -6,27 +6,13 @@ wear in µm.  This is the deployment-track model: small enough to fit on
 STM32F401RC (256 KB flash, 64 KB SRAM) and compatible with X-CUBE-AI
 (neural-network-only runtime).
 
-Architectures
--------------
-  --arch simple      : 4-block VGG stack (~61 K params)
-  --arch multiscale  : Inception-style multiscale feature pyramid
-                       adapted from Zhang et al. 2023 (~28 K params, default)
-
-Augmentation
-------------
-SpecAugment-style augmentation is applied to the training split: cyclic
-time shift, frequency masking, time masking, and occasional channel drop.
-See src/data/sensor_scalogram_dataset.py for parameters.
-
 Pre-requisite
 -------------
     python experiments/phase3_fusion/precompute_scalograms.py
 
 Usage
 -----
-    python experiments/phase4_sensor_cnn/train.py                          # multiscale + aug (default)
-    python experiments/phase4_sensor_cnn/train.py --arch simple            # simple stack
-    python experiments/phase4_sensor_cnn/train.py --no-augment             # disable augmentation
+    python experiments/phase4_sensor_cnn/train.py
     python experiments/phase4_sensor_cnn/train.py --resume
 
 Run from the thesis root.
@@ -45,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.data.sensor_scalogram_dataset import MATWISensorScalogramDataset
-from src.models.sensor_cnn_model import SensorCNNRegressor, MultiScaleSensorCNN
+from src.models.sensor_cnn_model import SensorCNNRegressor
 from src.utils.metrics import mae
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -56,25 +42,18 @@ RESULTS_DIR   = Path(__file__).parent / "results"
 
 LR          = 1e-3
 BATCH_SIZE  = 16
-EPOCHS      = 120
+EPOCHS      = 100
 NUM_WORKERS = 0
-
-ARCH_FACTORY = {
-    "simple":      SensorCNNRegressor,
-    "multiscale":  MultiScaleSensorCNN,
-}
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def run(arch: str, augment: bool, resume: bool):
+def run(resume: bool):
     device = (
         "cuda" if torch.cuda.is_available()
         else "mps" if torch.backends.mps.is_available()
         else "cpu"
     )
-    print(f"Device      : {device}")
-    print(f"Architecture: {arch}")
-    print(f"Augmentation: {augment}\n")
+    print(f"Device: {device}\n")
 
     if not SCALOGRAM_DIR.exists() or not any(SCALOGRAM_DIR.glob("*.pt")):
         sys.exit(
@@ -83,37 +62,31 @@ def run(arch: str, augment: bool, resume: bool):
         )
 
     # ── Data ──────────────────────────────────────────────────────────────────
-    train_ds = MATWISensorScalogramDataset(
-        SCALOGRAM_DIR, FEATURES_PATH, split="train",
-        augment=augment,   # True/False; dataset handles default
-    )
-    val_ds   = MATWISensorScalogramDataset(
-        SCALOGRAM_DIR, FEATURES_PATH, split="val", augment=False,
-    )
+    train_ds = MATWISensorScalogramDataset(SCALOGRAM_DIR, FEATURES_PATH, split="train")
+    val_ds   = MATWISensorScalogramDataset(SCALOGRAM_DIR, FEATURES_PATH, split="val")
     print(f"Train samples: {len(train_ds)}  |  Val samples: {len(val_ds)}")
 
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True,  num_workers=NUM_WORKERS)
     val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
     # ── Model ─────────────────────────────────────────────────────────────────
-    model = ARCH_FACTORY[arch]().to(device)
+    model = SensorCNNRegressor().to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Parameters : {n_params:,}")
-    print(f"INT8 size  : {n_params / 1024:.1f} KB")
-    print(f"INT4 size  : {n_params * 0.5 / 1024:.1f} KB\n")
+    print(f"INT8 size  : {n_params / 1024:.1f} KB\n")
 
     # ── Optimisation ──────────────────────────────────────────────────────────
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=10
+        optimizer, mode="min", factor=0.5, patience=8
     )
     criterion = nn.MSELoss()
 
     CKPT_DIR.mkdir(exist_ok=True)
     RESULTS_DIR.mkdir(exist_ok=True)
 
-    ckpt_path    = CKPT_DIR / f"phase4_{arch}_best.pt"
-    history_path = RESULTS_DIR / f"history_{arch}.json"
+    ckpt_path    = CKPT_DIR / "phase4_best.pt"
+    history_path = RESULTS_DIR / "history.json"
     start_epoch  = 1
     best_val_mae = float("inf")
     history      = []
@@ -192,11 +165,6 @@ def run(arch: str, augment: bool, resume: bool):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--arch",        type=str, default="multiscale",
-                        choices=list(ARCH_FACTORY.keys()),
-                        help="Architecture (default: multiscale)")
-    parser.add_argument("--no-augment",  action="store_true",
-                        help="Disable scalogram augmentation")
-    parser.add_argument("--resume",      action="store_true")
+    parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
-    run(arch=args.arch, augment=not args.no_augment, resume=args.resume)
+    run(resume=args.resume)
