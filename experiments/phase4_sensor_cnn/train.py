@@ -111,7 +111,7 @@ def run(arch: str, optim_name: str, resume: bool):
     # ── Optimisation ──────────────────────────────────────────────────────────
     optimizer = build_optimizer(optim_name, model)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=8
+        optimizer, mode="min", factor=0.5, patience=5
     )
     criterion = nn.MSELoss()
 
