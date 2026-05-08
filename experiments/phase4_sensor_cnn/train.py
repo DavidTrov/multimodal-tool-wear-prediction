@@ -54,7 +54,7 @@ FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
 CKPT_DIR      = ROOT / "checkpoints"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
-LR          = 1e-3
+LR          = 1e-3   # 0.001 for SGDM; 0.01 caused explosion on this 647-sample dataset
 BATCH_SIZE  = 16
 EPOCHS      = 100
 NUM_WORKERS = 0
@@ -110,8 +110,11 @@ def run(arch: str, optim_name: str, resume: bool):
 
     # ── Optimisation ──────────────────────────────────────────────────────────
     optimizer = build_optimizer(optim_name, model)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=8
+    # Cosine annealing: decays LR smoothly from peak to eta_min over all epochs.
+    # Better than ReduceLROnPlateau for SGDM — avoids premature LR collapse
+    # before the model has explored the flat loss basin.
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=EPOCHS, eta_min=1e-5
     )
     criterion = nn.MSELoss()
 
@@ -167,7 +170,7 @@ def run(arch: str, optim_name: str, resume: bool):
         val_mae     = mae(all_preds, all_targets)
         val_mae_std = (all_preds - all_targets).abs().std().item()
 
-        scheduler.step(val_mae)
+        scheduler.step()
         current_lr = optimizer.param_groups[0]["lr"]
 
         history.append({
