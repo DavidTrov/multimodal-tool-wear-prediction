@@ -77,7 +77,7 @@ def build_optimizer(name: str, model: nn.Module) -> torch.optim.Optimizer:
     raise ValueError(f"Unknown optimizer: {name!r}. Choose 'adam' or 'sgdm'.")
 
 
-def run(arch: str, optim_name: str, resume: bool, patience: int):
+def run(arch: str, optim_name: str, resume: bool):
     device = (
         "cuda" if torch.cuda.is_available()
         else "mps" if torch.backends.mps.is_available()
@@ -85,8 +85,7 @@ def run(arch: str, optim_name: str, resume: bool, patience: int):
     )
     print(f"Device    : {device}")
     print(f"Arch      : {arch}")
-    print(f"Optimizer : {optim_name}")
-    print(f"Patience  : {patience if patience > 0 else 'disabled'}\n")
+    print(f"Optimizer : {optim_name}\n")
 
     if not SCALOGRAM_DIR.exists() or not any(SCALOGRAM_DIR.glob("*.pt")):
         sys.exit(
@@ -117,17 +116,16 @@ def run(arch: str, optim_name: str, resume: bool, patience: int):
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=EPOCHS, eta_min=1e-5
     )
-    criterion = nn.MSELoss()
+    criterion = nn.HuberLoss(delta=20.0)
 
     CKPT_DIR.mkdir(exist_ok=True)
     RESULTS_DIR.mkdir(exist_ok=True)
 
     ckpt_path    = CKPT_DIR / f"phase4_{arch}_{optim_name}_best.pt"
     history_path = RESULTS_DIR / f"history_{arch}_{optim_name}.json"
-    start_epoch    = 1
-    best_val_mae   = float("inf")
-    epochs_no_impr = 0
-    history        = []
+    start_epoch  = 1
+    best_val_mae = float("inf")
+    history      = []
 
     if resume and ckpt_path.exists():
         model.load_state_dict(torch.load(ckpt_path, map_location=device))
@@ -190,15 +188,9 @@ def run(arch: str, optim_name: str, resume: bool, patience: int):
         )
 
         if val_mae < best_val_mae:
-            best_val_mae   = val_mae
-            epochs_no_impr = 0
+            best_val_mae = val_mae
             torch.save(model.state_dict(), ckpt_path)
             print(f"  ✓ New best: {best_val_mae:.2f} µm")
-        else:
-            epochs_no_impr += 1
-            if patience > 0 and epochs_no_impr >= patience:
-                print(f"\nEarly stop: no improvement for {patience} epochs.")
-                break
 
         with open(history_path, "w") as f:
             json.dump(history, f, indent=2)
@@ -218,9 +210,5 @@ if __name__ == "__main__":
         help="Optimizer (default: adam)",
     )
     parser.add_argument("--resume", action="store_true")
-    parser.add_argument(
-        "--patience", type=int, default=20,
-        help="Early stopping patience in epochs (0 = disabled, default: 20)",
-    )
     args = parser.parse_args()
-    run(arch=args.arch, optim_name=args.optim, resume=args.resume, patience=args.patience)
+    run(arch=args.arch, optim_name=args.optim, resume=args.resume)
