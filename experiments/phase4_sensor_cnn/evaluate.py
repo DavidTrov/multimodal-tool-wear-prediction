@@ -3,7 +3,7 @@ Phase 4 — test-set evaluation for the sensor-only CWT scalogram CNN.
 
 Usage:
     python experiments/phase4_sensor_cnn/evaluate.py
-    python experiments/phase4_sensor_cnn/evaluate.py --arch multiscale
+    python experiments/phase4_sensor_cnn/evaluate.py --arch multiscale --optim sgdm
 
 Run from the thesis root.
 """
@@ -62,7 +62,7 @@ def evaluate(split: str, model, device):
     }
 
 
-def run(arch: str):
+def run(arch: str, optim: str):
     device = (
         "cuda" if torch.cuda.is_available()
         else "mps" if torch.backends.mps.is_available()
@@ -70,8 +70,9 @@ def run(arch: str):
     )
     print(f"Device : {device}")
     print(f"Arch   : {arch}")
+    print(f"Optim  : {optim}")
 
-    ckpt_path = CKPT_DIR / f"phase4_{arch}_best.pt"
+    ckpt_path = CKPT_DIR / f"phase4_{arch}_{optim}_best.pt"
     if not ckpt_path.exists():
         sys.exit(f"Checkpoint not found: {ckpt_path}\nRun train.py first.")
 
@@ -101,7 +102,7 @@ def run(arch: str):
     print(f"Paper baseline               : 19.00 µm")
 
     RESULTS_DIR.mkdir(exist_ok=True)
-    out = RESULTS_DIR / f"eval_results_{arch}.json"
+    out = RESULTS_DIR / f"eval_results_{arch}_{optim}.json"
     with open(out, "w") as f:
         json.dump(results, f, indent=2)
     print(f"\nSaved to {out}")
@@ -113,5 +114,9 @@ if __name__ == "__main__":
         "--arch", choices=list(ARCH_REGISTRY), default="baseline",
         help="Architecture to evaluate (default: baseline)",
     )
+    parser.add_argument(
+        "--optim", choices=["adam", "sgdm"], default="adam",
+        help="Optimizer used during training (default: adam)",
+    )
     args = parser.parse_args()
-    run(arch=args.arch)
+    run(arch=args.arch, optim=args.optim)

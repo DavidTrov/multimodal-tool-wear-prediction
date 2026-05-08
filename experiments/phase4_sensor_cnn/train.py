@@ -111,14 +111,14 @@ def run(arch: str, optim_name: str, resume: bool):
     # ── Optimisation ──────────────────────────────────────────────────────────
     optimizer = build_optimizer(optim_name, model)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=5
+        optimizer, mode="min", factor=0.5, patience=8
     )
     criterion = nn.MSELoss()
 
     CKPT_DIR.mkdir(exist_ok=True)
     RESULTS_DIR.mkdir(exist_ok=True)
 
-    ckpt_path    = CKPT_DIR / f"phase4_{arch}_best.pt"
+    ckpt_path    = CKPT_DIR / f"phase4_{arch}_{optim_name}_best.pt"
     history_path = RESULTS_DIR / f"history_{arch}_{optim_name}.json"
     start_epoch  = 1
     best_val_mae = float("inf")
