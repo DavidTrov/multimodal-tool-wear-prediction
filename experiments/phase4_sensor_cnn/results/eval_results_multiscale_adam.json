@@ -1,0 +1,26 @@
+{
+  "train": {
+    "split": "train",
+    "n_samples": 647,
+    "mae": 11.46,
+    "mae_std": 11.88,
+    "mae_min": 0.04,
+    "mae_max": 121.49
+  },
+  "val": {
+    "split": "val",
+    "n_samples": 300,
+    "mae": 47.55,
+    "mae_std": 64.62,
+    "mae_min": 0.25,
+    "mae_max": 208.4
+  },
+  "test": {
+    "split": "test",
+    "n_samples": 247,
+    "mae": 42.69,
+    "mae_std": 33.99,
+    "mae_min": 0.57,
+    "mae_max": 271.07
+  }
+}
