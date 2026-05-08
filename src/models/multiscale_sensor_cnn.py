@@ -68,7 +68,7 @@ class MultiScaleSensorCNN(nn.Module):
         Dropout(0.1) → Linear(96, 1)
     """
 
-    def __init__(self, dropout: float = 0.1):
+    def __init__(self, dropout: float = 0.3):
         super().__init__()
 
         # ── Multi-scale entry ──────────────────────────────────────────────────
