@@ -88,7 +88,7 @@ class MultiScaleSensorCNN(nn.Module):
 
         # ── Regression head ────────────────────────────────────────────────────
         self.head = nn.Sequential(
-            nn.Dropout(dropout),
+            nn.Dropout(dropout),                            
             nn.Linear(96, 1),
         )
 
