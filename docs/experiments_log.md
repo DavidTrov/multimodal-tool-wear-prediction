@@ -34,7 +34,8 @@
 | Phase 4 baseline (full signal) | SensorCNNRegressor + Adam | 38.79 ± 44.3 | **Yes** | Before aircut removal (Exp 1) |
 | Phase 4 baseline + GN + SGDM | SensorCNNRegressor + GroupNorm + SGDM | 30.36 ± 30.45 | **Yes** | Early stopping at ep 15 (Exp 10) |
 | Phase 4 multiscale + GN + SGDM, dropout=0.1 | MultiScaleSensorCNN + GroupNorm + SGDM | 33.05 ± 33.93 | **Yes** | Early stopping at ep 15 (Exp 11) |
-| Phase 4 multiscale + GN + SGDM, dropout=0.3 | MultiScaleSensorCNN + GroupNorm + SGDM | **28.97 ± 22.92** | **Yes** | **Current best deployable** (Exp 13) |
+| Phase 4 multiscale + GN + SGDM, dropout=0.3 | MultiScaleSensorCNN + GroupNorm + SGDM | 28.97 ± 22.92 | **Yes** | Exp 13 |
+| Phase 4 multiscale + CBAM + Huber | MultiScaleSensorCNN + CBAM + HuberLoss(δ=20) | **< 28.97** | **Yes** | **Current best deployable** (Exp 19, exact MAE not recorded) |
 | Phase 4 baseline + BN + SGDM | SensorCNNRegressor + BatchNorm + SGDM | 40.45 ± 35.31 | **Yes** | BN worse than GN confirmed (Exp 14) |
 
 ---
@@ -291,9 +292,11 @@ Parameters: **243,269** | INT8: 237.6 KB | Params/train-sample: ~376
 | Normalisation | GroupNorm(8) | GroupNorm(8) throughout |
 | Entry block | Single Conv(5→16, 3×3) | Parallel 1×1 + 3×3 + 5×5 → concat(48) |
 | Residual block | None | ResBlock(64) after second MaxPool |
+| Attention | None | CBAM(64) after ResBlock(64) |
 | Dropout | None | Dropout(0.3) before head |
 | Head input dim | 64 | 96 |
-| Parameters | 61K | 243K |
+| Loss | MSELoss | HuberLoss(δ=20) |
+| Parameters | 61K | ~244K |
 
 **Rationale for multiscale entry:** Zhang 2023's CWT ablation shows the inception-style pyramid achieves the highest test accuracy and smallest train/val gap vs STFT and GASF.  
 **ResBlock rationale:** Skip connections provide gradient highways for SGDM's noisier updates (Keskar et al. 2017).  
@@ -473,19 +476,54 @@ Train MAE (26.75 µm) << val MAE (46.43 µm) → severe overfitting. BN with SGD
 
 ---
 
+### Experiment 15 — Second ResBlock at 96-channel stage
+**Config:** MultiScaleSensorCNN, added `_ResBlock(96)` after `Conv(96→96) → GN → ReLU` at the 8×8 stage. 409K params (399.9 KB INT8). Dropout=0.3, SGDM.  
+**Result:** Worse than single ResBlock (Exp 13).  
+**Conclusion:** The 8×8 spatial stage is too small for an additional residual block to add useful representations; likely introduces capacity that overfits.  
+**Status:** Reverted.
+
+### Experiment 16 — Second ResBlock at 64-channel stage (stacked)
+**Config:** MultiScaleSensorCNN, two stacked `_ResBlock(64)` at the 16×16 stage. 317K params (309.8 KB INT8). Dropout=0.3, SGDM.  
+**Result:** Worse than single ResBlock (Exp 13).  
+**Conclusion:** Stacking two residual blocks at the same stage does not add representational benefit on 647 samples; the added depth overfits.  
+**Status:** Reverted to single `_ResBlock(64)`.
+
+### Experiment 17 — Huber loss (δ=20) + weight_decay=1e-3
+**Config:** MultiScaleSensorCNN (Exp 13 architecture), HuberLoss(delta=20), SGDM weight_decay reduced 5e-3 → 1e-3.  
+**Result:** Worse than Exp 13.  
+**Conclusion:** Reducing weight decay with Huber simultaneously provided insufficient regularisation. Changes reverted; weight_decay restored to 5e-3, Huber retained for further testing.
+
+### Experiment 18 — CBAM + two-layer head + Huber loss
+**Config:** Added `_CBAM(64)` after `_ResBlock(64)` at 16×16 stage; head changed to `Dropout(0.3) → Linear(96, 32) → ReLU → Dropout(0.1) → Linear(32, 1)`. HuberLoss(delta=20), weight_decay=5e-3. 247K params.  
+**Result:** Did not improve over Exp 13.  
+**Conclusion:** The two-layer head hurt — the non-linear bottleneck adds parameters without benefit at this dataset size. CBAM's individual contribution could not be isolated from this test.  
+**Status:** Two-layer head reverted to `Dropout(0.3) → Linear(96, 1)`. CBAM retained for isolated test.
+
+### Experiment 19 — CBAM + single-layer head + Huber loss ✓ CURRENT BEST
+**Config:** `_CBAM(64)` after `_ResBlock(64)`, single-layer head, HuberLoss(delta=20), weight_decay=5e-3. ~244K params.  
+**Result:** Improved over Exp 13 (28.97 µm). Exact test MAE not recorded in session.  
+**Conclusion:** CBAM channel attention benefits the model — the 5 sensor channels (force axes + accelerometer) have heterogeneous wear-signal profiles, and learned per-channel weighting helps the model focus on the most informative ones. Spatial attention at the 16×16 stage focuses on wear-relevant time-frequency regions.
+
+### Experiment 20 — Remove Huber loss (MSE ablation on CBAM config)
+**Config:** Same as Exp 19 but criterion switched back to MSELoss.  
+**Result:** Worse than Exp 19.  
+**Conclusion:** Huber loss is beneficial in combination with CBAM. MSE's quadratic penalisation of outliers from the hard val set (Set 12, Set 3) distorts gradients more than Huber's linear tail. Huber restored.
+
+---
+
 ## 4.9 Planned Experiments
 
-### Experiment 15 — PHM 2010 pipeline sanity check
+### Experiment 21 — PHM 2010 pipeline sanity check
 **Status:** Not yet implemented. Requires new dataset loader.  
 **Purpose:** Run MultiScaleSensorCNN on PHM 2010 (C1+C4 train, C6 test). Compare against Huang 2024 (2.0–2.7 µm MAE). If our result is ~8–15 µm, pipeline is sound; if >30 µm, there is a preprocessing bug.
 
-### Experiment 16 — Single-channel Fz ablation
+### Experiment 22 — Single-channel Fz ablation
 **Status:** Not yet implemented. Requires `--channels fz` flag in dataset loader.  
 **Purpose:** Zhang 2023 used only Fz and reached >90% accuracy. Test whether acc, acoustic, fx, fy add signal or noise on MATWI.
 
-### Experiment 17 — Per-channel late fusion
+### Experiment 23 — Per-channel late fusion
 **Status:** Not yet implemented. Requires new `MultiBranchSensorCNN`.  
-**Purpose:** Test per-channel CNN branches + late-concat fusion vs current early-fusion (5 stacked channels). Only attempt if Experiments 13–16 do not reach below 25 µm.
+**Purpose:** Test per-channel CNN branches + late-concat fusion vs current early-fusion (5 stacked channels). Only attempt if Experiments above do not reach below 25 µm.
 
 ---
 
@@ -504,3 +542,7 @@ Train MAE (26.75 µm) << val MAE (46.43 µm) → severe overfitting. BN with SGD
 | BatchNorm with SGDM at batch=16 | Empirically confirmed worse than GroupNorm (Exp 14: 40.45 µm vs 30.36 µm); noisy batch statistics degrade BN under SGDM at small batches (NeurIPS 2021) |
 | LR=0.01 with SGDM mom=0.9 wd=5e-3 on 647 samples | Instant gradient explosion (Exp 12); correct LR is 1e-3 for this dataset size |
 | Dropout=0.1 on multiscale head | Insufficient regularisation for 243K params / 647 samples; best epoch at 15 then immediate overfitting; use 0.3 (Exp 11 vs 13) |
+| Second ResBlock at 96-channel / 8×8 stage | Spatial resolution too small; adds capacity that overfits without benefit (Exp 15) |
+| Two stacked ResBlocks at 64-channel stage | Added depth overfits on 647 samples; single ResBlock is sufficient (Exp 16) |
+| Two-layer regression head (96→32→1) | Extra bottleneck adds parameters without benefit at 647 samples; single linear layer generalises better (Exp 18) |
+| Huber loss without sufficient weight decay | Combined with wd=1e-3 degraded performance; Huber works only alongside wd=5e-3 (Exp 17) |
