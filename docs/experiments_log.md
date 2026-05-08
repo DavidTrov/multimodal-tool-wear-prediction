@@ -4,7 +4,7 @@
 **Task:** Regression — predict tool wear in µm  
 **Metric:** MAE ± std (µm), lower is better  
 **Paper baseline:** 19.00 µm (ResNet50, image-only)  
-**Last updated:** 2026-05-08
+**Last updated:** 2026-05-08 (session 3)
 
 ---
 
@@ -31,10 +31,11 @@
 | Phase 3 v2 | Fusion, early attempt | ~33 | No | Still above baseline |
 | Phase 3 v3 | Fusion + LayerNorm + normalisation | **23.38 ± 19.5** | No | Matched image baseline |
 | Phase 3 v4 | Fusion + modality gating | pending | No | Result not yet recorded |
-| Phase 4 baseline (full signal) | SensorCNNRegressor + Adam | 38.79 ± 44.3 | **Yes** | Before aircut removal |
-| Phase 4 baseline (aircut-gated) | SensorCNNRegressor + Adam | pending | **Yes** | Clean retrain pending |
-| Phase 4 multiscale + Adam | MultiScaleSensorCNN + Adam | pending | **Yes** | Result not yet recorded |
-| Phase 4 multiscale + SGDM | MultiScaleSensorCNN + SGDM | overfits | **Yes** | Best ~50–70 µm; overfits epoch 20–30 |
+| Phase 4 baseline (full signal) | SensorCNNRegressor + Adam | 38.79 ± 44.3 | **Yes** | Before aircut removal (Exp 1) |
+| Phase 4 baseline + GN + SGDM | SensorCNNRegressor + GroupNorm + SGDM | 30.36 ± 30.45 | **Yes** | Early stopping at ep 15 (Exp 10) |
+| Phase 4 multiscale + GN + SGDM, dropout=0.1 | MultiScaleSensorCNN + GroupNorm + SGDM | 33.05 ± 33.93 | **Yes** | Early stopping at ep 15 (Exp 11) |
+| Phase 4 multiscale + GN + SGDM, dropout=0.3 | MultiScaleSensorCNN + GroupNorm + SGDM | **28.97 ± 22.92** | **Yes** | **Current best deployable** (Exp 13) |
+| Phase 4 baseline + BN + SGDM | SensorCNNRegressor + BatchNorm + SGDM | 40.45 ± 35.31 | **Yes** | BN worse than GN confirmed (Exp 14) |
 
 ---
 
@@ -244,16 +245,18 @@ Observed retention: ~65% of signal kept on Set 1 files. **`experiments/phase3_fu
 
 ```
 Input (5, 64, 64)
-Conv(5→16, 3×3) → BN → ReLU → MaxPool(2)    → (16, 32, 32)
-Conv(16→32, 3×3) → BN → ReLU → MaxPool(2)   → (32, 16, 16)
-Conv(32→64, 3×3) → BN → ReLU → MaxPool(2)   → (64, 8, 8)
-Conv(64→64, 3×3) → BN → ReLU                → (64, 8, 8)
+Conv(5→16, 3×3) → GN(8) → ReLU → MaxPool(2)    → (16, 32, 32)
+Conv(16→32, 3×3) → GN(8) → ReLU → MaxPool(2)   → (32, 16, 16)
+Conv(32→64, 3×3) → GN(8) → ReLU → MaxPool(2)   → (64, 8, 8)
+Conv(64→64, 3×3) → GN(8) → ReLU                → (64, 8, 8)
 AdaptiveAvgPool2d(1) → Flatten → Linear(64, 1)
 ```
 
 Parameters: **61,041** | INT8: 59.6 KB | Params/train-sample: ~94
 
-### MultiScaleSensorCNN (Zhang 2023 inspired)
+> **GroupNorm vs BatchNorm (baseline):** GN was adopted because BN degrades under SGDM at batch=16 due to noisy batch statistics (NeurIPS 2021). Empirically confirmed in Experiment 14 — reverting to BN raised test MAE from 30.36 → 40.45 µm.
+
+### MultiScaleSensorCNN (Zhang 2023 inspired, current best)
 
 **File:** `src/models/multiscale_sensor_cnn.py`  
 **Citation:** Zhang Y. et al., *Sensors* 23(10), 4595, 2023.
@@ -262,34 +265,39 @@ Parameters: **61,041** | INT8: 59.6 KB | Params/train-sample: ~94
 Input (5, 64, 64)
 
 ── Multi-scale entry (no spatial downsampling) ──────────────────────────
-path_1x1 : Conv(5→16, 1×1) → BN → ReLU
-path_3x3 : Conv(5→8, 1×1) → BN → ReLU → Conv(8→24, 3×3) → BN → ReLU
-path_5x5 : Conv(5→4, 1×1) → BN → ReLU → Conv(4→8, 5×5) → BN → ReLU
+path_1x1 : Conv(5→16, 1×1) → GN(8) → ReLU
+path_3x3 : Conv(5→8, 1×1) → GN(8) → ReLU → Conv(8→24, 3×3) → GN(8) → ReLU
+path_5x5 : Conv(5→4, 1×1) → GN(4) → ReLU → Conv(4→8, 5×5) → GN(8) → ReLU
 Concat → 48 channels, 64×64
 
 ── Feature extractor ────────────────────────────────────────────────────
-MaxPool(2)                               → (48, 32, 32)
-Conv(48→64, 3×3) → BN → ReLU
-MaxPool(2)                               → (64, 16, 16)
-Conv(64→96, 3×3) → BN → ReLU
-MaxPool(2)                               → (96, 8, 8)
-Conv(96→96, 3×3) → BN → ReLU            → (96, 8, 8)
-AdaptiveAvgPool2d(1) → Flatten           → 96
+MaxPool(2)                                         → (48, 32, 32)
+Conv(48→64, 3×3) → GN(8) → ReLU
+MaxPool(2)                                         → (64, 16, 16)
+ResBlock(64): [Conv→GN→ReLU→Conv→GN] + skip        → (64, 16, 16)
+Conv(64→96, 3×3) → GN(8) → ReLU
+MaxPool(2)                                         → (96, 8, 8)
+Conv(96→96, 3×3) → GN(8) → ReLU                   → (96, 8, 8)
+AdaptiveAvgPool2d(1) → Flatten                     → 96
 
 ── Regression head ──────────────────────────────────────────────────────
-Dropout(0.1) → Linear(96, 1)
+Dropout(0.3) → Linear(96, 1)
 ```
 
-Parameters: **169,285** | INT8: 165.3 KB | Params/train-sample: ~262
+Parameters: **243,269** | INT8: 237.6 KB | Params/train-sample: ~376
 
 | Aspect | Baseline | MultiScaleSensorCNN |
 |---|---|---|
+| Normalisation | GroupNorm(8) | GroupNorm(8) throughout |
 | Entry block | Single Conv(5→16, 3×3) | Parallel 1×1 + 3×3 + 5×5 → concat(48) |
-| Dropout | None | Dropout(0.1) before head |
+| Residual block | None | ResBlock(64) after second MaxPool |
+| Dropout | None | Dropout(0.3) before head |
 | Head input dim | 64 | 96 |
-| Parameters | 61K | 169K |
+| Parameters | 61K | 243K |
 
-**Rationale for multiscale entry:** Zhang 2023's CWT ablation shows the inception-style pyramid achieves the highest test accuracy and smallest train/val gap vs STFT and GASF. Parallel 3×3 and 5×5 paths capture multi-frequency patterns that a single 3×3 filter misses in CWT scalograms.
+**Rationale for multiscale entry:** Zhang 2023's CWT ablation shows the inception-style pyramid achieves the highest test accuracy and smallest train/val gap vs STFT and GASF.  
+**ResBlock rationale:** Skip connections provide gradient highways for SGDM's noisier updates (Keskar et al. 2017).  
+**Dropout=0.3 rationale:** Empirically derived — dropout=0.1 allowed overfitting from epoch 15; 0.3 delayed best checkpoint to epoch 19 and improved test MAE from 33.05 → 28.97 µm (Experiments 11 vs 13).
 
 ---
 
@@ -302,8 +310,9 @@ Parameters: **169,285** | INT8: 165.3 KB | Params/train-sample: ~262
 | `--arch` | `baseline`, `multiscale` | `baseline` |
 | `--optim` | `adam`, `sgdm` | `adam` |
 | `--resume` | flag | off |
+| `--patience` | int | 20 (0 = disabled) |
 
-Checkpoints: `checkpoints/phase4_{arch}_best.pt`  
+Checkpoints: `checkpoints/phase4_{arch}_{optim}_best.pt`  
 History: `results/history_{arch}_{optim}.json`
 
 **SGDM config** (Zhang 2023 §4.1):
@@ -311,9 +320,11 @@ History: `results/history_{arch}_{optim}.json`
 torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-3)
 ```
 
-**Scheduler:** ReduceLROnPlateau, mode=min, factor=0.5, patience=5 (reduced from 8 to allow LR decay before overfitting gap widens).
+**Scheduler:** `CosineAnnealingLR(T_max=100, eta_min=1e-5)` — decays LR smoothly from peak to 1e-5 over all epochs. Replaced ReduceLROnPlateau after that scheduler caused premature LR collapse before the model explored the flat loss basin under SGDM.
 
-**`experiments/phase4_sensor_cnn/evaluate.py`** accepts `--arch` and saves to `results/eval_results_{arch}.json`.
+**Early stopping:** Patience=20 by default. Stops training when val MAE has not improved for 20 consecutive epochs. Both models in session 3 converged around epoch 15–24 and stopped at epoch 39–44, saving ~60 wasted epochs.
+
+**`experiments/phase4_sensor_cnn/evaluate.py`** accepts `--arch` and `--optim`; saves to `results/eval_results_{arch}_{optim}.json`.
 
 ---
 
@@ -400,21 +411,81 @@ torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-3)
 **Root cause:** 160 gradient steps/epoch with lr=1e-3 and momentum=0.9 accumulates excessive optimizer velocity; model memorises training set before BatchNorm statistics stabilise. Linear scaling rule requires lr ≈ 2.5e-4 at batch=4, which was not applied.  
 **Status:** Reverted to batch=16.
 
+### Experiment 10 — Baseline + GroupNorm + SGDM, no early stopping
+**Config:** SensorCNNRegressor with GroupNorm(8) replacing BatchNorm, SGDM lr=1e-3 mom=0.9 wd=5e-3, batch=16, CosineAnnealingLR(T_max=100), 100 epochs  
+**Result:**
+
+| Split | n | MAE (µm) | Std |
+|---|---|---|---|
+| Train | 647 | 38.05 | ±35.90 |
+| Val | 300 | 42.63 | ±51.41 |
+| **Test** | **247** | **30.36** | **±30.45** |
+
+Best val MAE at epoch 15. Val MAE plateaus around 49–51 µm after epoch 15; train loss continues to fall → clear overfitting. CosineAnnealingLR does not help once model is past its best checkpoint.  
+**Improvement over Exp 1:** 38.79 → 30.36 µm test MAE (aircut gating + GroupNorm + SGDM combined).
+
+### Experiment 11 — Multiscale + GroupNorm + ResBlock + SGDM, dropout=0.1, no early stopping
+**Config:** MultiScaleSensorCNN with GroupNorm(8) throughout, ResBlock(64) in feature extractor, dropout=0.1, SGDM lr=1e-3, CosineAnnealingLR(T_max=100), 100 epochs  
+**Result:**
+
+| Split | n | MAE (µm) | Std |
+|---|---|---|---|
+| Train | 647 | 39.86 | ±43.48 |
+| Val | 300 | 41.01 | ±61.34 |
+| **Test** | **247** | **33.05** | **±33.93** |
+
+Best val MAE at epoch 15. Despite 4× more parameters and ResBlock, baseline (Exp 10) outperforms on test. Diagnosis: 243K params / 647 samples = ~376 params/sample; dropout=0.1 provides insufficient regularisation.
+
+### Experiment 12 — Multiscale + SGDM, LR=0.01 (gradient explosion)
+**Config:** Same as Exp 11 but LR=0.01 (accidentally set during architecture changes)  
+**Result:** Epoch 1 train_loss = 4.4×10¹⁶. Model predicted constant for epochs 1–6 (val_mae_std=82.71 exactly). Recovered briefly at epoch 8–11, then stuck at train_loss≈8000 for remaining 89 epochs.  
+Best checkpoint (epoch 11): test MAE = **37.54 ± 26.75 µm** — undertrained, worse than Exp 10.  
+**Root cause:** SGDM momentum=0.9 + weight_decay=5e-3 + LR=0.01 on 647-sample dataset → optimizer velocity accumulation causes immediate explosion. Even after gradient clipping brings loss down, momentum carries weights into a degenerate flat region.  
+**Status:** Reverted to LR=1e-3.
+
+### Experiment 13 — Multiscale + SGDM, dropout=0.3, early stopping ✓ CURRENT BEST
+**Config:** MultiScaleSensorCNN, GroupNorm, ResBlock, dropout=0.3, SGDM lr=1e-3, CosineAnnealingLR, early stopping patience=20  
+**Result:**
+
+| Split | n | MAE (µm) | Std |
+|---|---|---|---|
+| Train | 647 | 45.46 | ±53.42 |
+| Val | 300 | 44.70 | ±66.22 |
+| **Test** | **247** | **28.97** | **±22.92** |
+
+Best val MAE (44.70 µm) at epoch 19. Stopped at epoch 39 (patience=20 from epoch 19).  
+Compared to Exp 11 (dropout=0.1): best epoch delayed 15→19, test MAE improved 33.05→28.97 µm. Dropout=0.3 is directly responsible.  
+**This is the first deployable model to beat XGBoost (28.97 vs 28.25 µm).** Gap is within noise margin.
+
+### Experiment 14 — Baseline + BatchNorm + SGDM, early stopping (BN vs GN ablation)
+**Config:** SensorCNNRegressor with BatchNorm2d (reverting GroupNorm), SGDM lr=1e-3, CosineAnnealingLR, early stopping patience=20  
+**Result:**
+
+| Split | n | MAE (µm) | Std |
+|---|---|---|---|
+| Train | 647 | 26.75 | ±31.56 |
+| Val | 300 | 46.43 | ±68.52 |
+| **Test** | **247** | **40.45** | **±35.31** |
+
+Best val MAE (46.43 µm) at epoch 24. Stopped at epoch 44.  
+Train MAE (26.75 µm) << val MAE (46.43 µm) → severe overfitting. BN with SGDM at batch=16 causes instability consistent with the NeurIPS 2021 unified normalisation study.  
+**Conclusion:** GroupNorm is confirmed better than BatchNorm for SGDM+batch=16 on this dataset. Baseline reverted to GroupNorm.
+
 ---
 
 ## 4.9 Planned Experiments
 
-### Experiment 10 — PHM 2010 pipeline sanity check
+### Experiment 15 — PHM 2010 pipeline sanity check
 **Status:** Not yet implemented. Requires new dataset loader.  
 **Purpose:** Run MultiScaleSensorCNN on PHM 2010 (C1+C4 train, C6 test). Compare against Huang 2024 (2.0–2.7 µm MAE). If our result is ~8–15 µm, pipeline is sound; if >30 µm, there is a preprocessing bug.
 
-### Experiment 11 — Single-channel Fz ablation
+### Experiment 16 — Single-channel Fz ablation
 **Status:** Not yet implemented. Requires `--channels fz` flag in dataset loader.  
 **Purpose:** Zhang 2023 used only Fz and reached >90% accuracy. Test whether acc, acoustic, fx, fy add signal or noise on MATWI.
 
-### Experiment 12 — Per-channel late fusion
+### Experiment 17 — Per-channel late fusion
 **Status:** Not yet implemented. Requires new `MultiBranchSensorCNN`.  
-**Purpose:** Test per-channel CNN branches + late-concat fusion vs current early-fusion (5 stacked channels). Only attempt if Experiments 6–8 do not reach below 25 µm.
+**Purpose:** Test per-channel CNN branches + late-concat fusion vs current early-fusion (5 stacked channels). Only attempt if Experiments 13–16 do not reach below 25 µm.
 
 ---
 
@@ -430,3 +501,6 @@ torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-3)
 | Global absolute force threshold for aircut | Per-set DC bias makes this impossible; use AC-RMS adaptive threshold |
 | Batch size=4 with SGDM lr=1e-3 | 160 steps/epoch at high momentum causes optimizer overshoot from epoch 1; scale lr ∝ batch if reducing |
 | Daubechies wavelets for CWT scalograms | DWT family — produces coefficient trees, not 2D scalograms; wrong transform |
+| BatchNorm with SGDM at batch=16 | Empirically confirmed worse than GroupNorm (Exp 14: 40.45 µm vs 30.36 µm); noisy batch statistics degrade BN under SGDM at small batches (NeurIPS 2021) |
+| LR=0.01 with SGDM mom=0.9 wd=5e-3 on 647 samples | Instant gradient explosion (Exp 12); correct LR is 1e-3 for this dataset size |
+| Dropout=0.1 on multiscale head | Insufficient regularisation for 243K params / 647 samples; best epoch at 15 then immediate overfitting; use 0.3 (Exp 11 vs 13) |

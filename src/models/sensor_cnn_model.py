@@ -4,6 +4,7 @@ Sensor-only CNN regressor on CWT scalograms.
 Architecture: simple 4-block VGG-style stack (~61 K params).
 Uses GroupNorm(G=8) instead of BatchNorm — BN degrades at batch sizes 16-32
 under SGDM due to noisy batch statistics (NeurIPS 2021 unified normalisation study).
+BatchNorm was tested in Phase 4 experiment 12 and produced worse results (40.45 µm vs 30.36 µm).
 """
 
 import torch
