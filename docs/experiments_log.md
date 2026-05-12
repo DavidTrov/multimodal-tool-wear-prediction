@@ -509,19 +509,30 @@ Train MAE (26.75 µm) << val MAE (46.43 µm) → severe overfitting. BN with SGD
 **Result:** Worse than Exp 19.  
 **Conclusion:** Huber loss is beneficial in combination with CBAM. MSE's quadratic penalisation of outliers from the hard val set (Set 12, Set 3) distorts gradients more than Huber's linear tail. Huber restored.
 
+### Experiment 21 — acc + acoustic only (2-channel CWT ablation)
+**Config:** MultiScaleSensorCNN with `in_channels=2`, CBAM, HuberLoss(δ=20), SGDM. `--channels acc acoustic`. Dropped fx, fy, fz CWT channels (often black/zero-power due to CWT frequency range 25–1600 Hz missing force DC/trend content).  
+**Result:** Not yet recorded separately — tested as part of hybrid development.  
+**Status:** Channel selection infrastructure (`--channels` flag) implemented in train.py and evaluate.py.
+
+### Experiment 22 — Hybrid: acc+acoustic CWT + force scalar features
+**Config:** `HybridSensorCNN` — two branches: (1) MultiScaleSensorCNN feature extractor on (2, 64, 64) acc+acoustic CWT, producing 96-dim; (2) MLP on 69 z-score-normalised force scalar features (RMS, kurtosis, crest factor, skewness, shape factor, 8 FFT bands, spectral centroid, HF energy ratio, 8 WPD bands × 3 force axes) from physics parquet, producing 16-dim. Concat → Dropout(0.3) → Linear(112, 1). 247K params, SGDM, HuberLoss(δ=20).  
+**Result:** Test MAE ≈ **34–35 µm** — worse than Exp 19 (~28 µm).  
+**Conclusion:** The force scalar features did not help. Possible reasons: (1) the physics features were computed from the full signal (pre-aircut gating), introducing noise; (2) the force features may be redundant with what the CWT already captures indirectly through harmonic amplitude changes; (3) the MLP branch may have overfit on the 69-dim input with only 647 samples.  
+**Status:** Reverted to pure CWT model (Exp 19 config).
+
 ---
 
 ## 4.9 Planned Experiments
 
-### Experiment 21 — PHM 2010 pipeline sanity check
+### Experiment 23 — PHM 2010 pipeline sanity check
 **Status:** Not yet implemented. Requires new dataset loader.  
 **Purpose:** Run MultiScaleSensorCNN on PHM 2010 (C1+C4 train, C6 test). Compare against Huang 2024 (2.0–2.7 µm MAE). If our result is ~8–15 µm, pipeline is sound; if >30 µm, there is a preprocessing bug.
 
-### Experiment 22 — Single-channel Fz ablation
+### Experiment 24 — Single-channel Fz ablation
 **Status:** Not yet implemented. Requires `--channels fz` flag in dataset loader.  
 **Purpose:** Zhang 2023 used only Fz and reached >90% accuracy. Test whether acc, acoustic, fx, fy add signal or noise on MATWI.
 
-### Experiment 23 — Per-channel late fusion
+### Experiment 25 — Per-channel late fusion
 **Status:** Not yet implemented. Requires new `MultiBranchSensorCNN`.  
 **Purpose:** Test per-channel CNN branches + late-concat fusion vs current early-fusion (5 stacked channels). Only attempt if Experiments above do not reach below 25 µm.
 
@@ -545,4 +556,5 @@ Train MAE (26.75 µm) << val MAE (46.43 µm) → severe overfitting. BN with SGD
 | Second ResBlock at 96-channel / 8×8 stage | Spatial resolution too small; adds capacity that overfits without benefit (Exp 15) |
 | Two stacked ResBlocks at 64-channel stage | Added depth overfits on 647 samples; single ResBlock is sufficient (Exp 16) |
 | Two-layer regression head (96→32→1) | Extra bottleneck adds parameters without benefit at 647 samples; single linear layer generalises better (Exp 18) |
+| Hybrid CWT + force scalar MLP fusion | 69-dim force features from parquet did not help CWT-only model; possibly due to pre-aircut-gating features or redundancy; 34–35 µm vs ~28 µm (Exp 22) |
 | Huber loss without sufficient weight decay | Combined with wd=1e-3 degraded performance; Huber works only alongside wd=5e-3 (Exp 17) |
