@@ -56,13 +56,27 @@ class MultiScaleFusionModel(nn.Module):
         self.image_norm  = nn.LayerNorm(IMAGE_FEAT_DIM)
         self.sensor_norm = nn.LayerNorm(SENSOR_FEAT_DIM)
 
-        # ── Fusion head ────────────────────────────────────────────────────────
-        self.head = nn.Sequential(
-            nn.Linear(IMAGE_FEAT_DIM + SENSOR_FEAT_DIM, 128),
+        # ── Per-modality projection towers ─────────────────────────────────────
+        # Each branch is projected to the same 128-dim space before merging.
+        # This gives each modality its own non-linear transformation and ensures
+        # equal gradient flow (128 dims each) regardless of original dimensionality.
+        self.img_proj = nn.Sequential(
+            nn.Linear(IMAGE_FEAT_DIM, 128),
             nn.LayerNorm(128),
             nn.GELU(),
-            nn.Dropout(0.3),
-            nn.Linear(128, 1),
+        )
+        self.sen_proj = nn.Sequential(
+            nn.Linear(SENSOR_FEAT_DIM, 128),
+            nn.LayerNorm(128),
+            nn.GELU(),
+        )
+
+        # ── Fusion head ────────────────────────────────────────────────────────
+        self.head = nn.Sequential(
+            nn.Dropout(0.2),
+            nn.Linear(256, 64),
+            nn.GELU(),
+            nn.Linear(64, 1),
         )
 
         # ── Auxiliary sensor head (training only) ──────────────────────────────
@@ -104,9 +118,10 @@ class MultiScaleFusionModel(nn.Module):
         f_img    = self.image_encoder(image)                    # (B, 512)
         f_sensor = self.sensor_cnn.extract_features(scalogram) # (B,  96)
 
-        combined = torch.cat(
-            [self.image_norm(f_img), self.sensor_norm(f_sensor)], dim=1
-        )                                                       # (B, 608)
+        h_img    = self.img_proj(self.image_norm(f_img))        # (B, 128)
+        h_sensor = self.sen_proj(self.sensor_norm(f_sensor))    # (B, 128)
+
+        combined = torch.cat([h_img, h_sensor], dim=1)          # (B, 256)
 
         p_final = self.head(combined)                           # (B,   1)
         p_aux   = self.aux_head(f_sensor)                       # (B,   1)
