@@ -44,7 +44,7 @@ PHASE1_CKPT = CKPT_DIR / "phase1_best.pt"
 PHASE4_CKPT = CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
 CKPT_PATH   = CKPT_DIR / "phase5_multiscale_fusion_best.pt"
 
-LR           = 1e-3   # fusion head + LayerNorms (only trainable params)
+LR           = 3e-3   # fusion head + LayerNorms (only trainable params)
 WEIGHT_DECAY = 5e-3
 BATCH_SIZE   = 16
 EPOCHS       = 100
