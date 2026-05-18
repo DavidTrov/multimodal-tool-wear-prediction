@@ -91,13 +91,10 @@ def run(resume: bool = False):
     print(f"Trainable params : {n_trainable:,}  (fusion head + aux head + LayerNorms)\n")
 
     # ── Optimisation — only head + LayerNorms ──────────────────────────────────
-    # Adam (not SGDM) for the tiny 1,922-param head.  We are doing linear
-    # probing on frozen features — SGDM's momentum accumulates across batches
-    # and causes catastrophic overshoot here.  Adam is adaptive and converges
-    # reliably for this setting (standard choice in linear-probing literature).
-    optimizer = torch.optim.Adam(
+    optimizer = torch.optim.SGD(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=LR,
+        momentum=0.9,
         weight_decay=WEIGHT_DECAY,
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
