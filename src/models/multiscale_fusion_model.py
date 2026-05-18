@@ -57,7 +57,12 @@ class MultiScaleFusionModel(nn.Module):
         self.sensor_norm = nn.LayerNorm(SENSOR_FEAT_DIM)
 
         # ── Fusion head ────────────────────────────────────────────────────────
-        self.head = nn.Linear(IMAGE_FEAT_DIM + SENSOR_FEAT_DIM, 1)
+        self.head = nn.Sequential(
+            nn.Linear(IMAGE_FEAT_DIM + SENSOR_FEAT_DIM, 128),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.3),
+            nn.Linear(128, 1),
+        )
 
         # ── Auxiliary sensor head (training only) ──────────────────────────────
         self.aux_head = nn.Linear(SENSOR_FEAT_DIM, 1)
