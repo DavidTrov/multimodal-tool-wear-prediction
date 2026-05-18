@@ -151,6 +151,10 @@ class MultiScaleSensorCNN(nn.Module):
             nn.Linear(96, 1),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        """96-dim embedding before Dropout+head. Used by fusion models."""
         x = torch.cat([self.path_1x1(x), self.path_3x3(x), self.path_5x5(x)], dim=1)
-        return self.head(self.features(x))
+        return self.features(x)   # AdaptiveAvgPool → Flatten → (B, 96)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.head(self.extract_features(x))
