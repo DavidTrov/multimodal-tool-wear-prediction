@@ -47,7 +47,7 @@ CKPT_PATH   = CKPT_DIR / "phase5_multiscale_fusion_best.pt"
 LR           = 3e-3   # fusion head + LayerNorms (only trainable params)
 WEIGHT_DECAY = 5e-3
 BATCH_SIZE   = 16
-EPOCHS       = 40
+EPOCHS       = 60
 AUX_LAMBDA   = 0.2    # weight of auxiliary sensor loss
 NUM_WORKERS  = 0
 # ─────────────────────────────────────────────────────────────────────────────

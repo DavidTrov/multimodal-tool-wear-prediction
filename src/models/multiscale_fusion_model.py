@@ -59,7 +59,8 @@ class MultiScaleFusionModel(nn.Module):
         # ── Fusion head ────────────────────────────────────────────────────────
         self.head = nn.Sequential(
             nn.Linear(IMAGE_FEAT_DIM + SENSOR_FEAT_DIM, 128),
-            nn.ReLU(inplace=True),
+            nn.LayerNorm(128),
+            nn.GELU(),
             nn.Dropout(0.3),
             nn.Linear(128, 1),
         )
