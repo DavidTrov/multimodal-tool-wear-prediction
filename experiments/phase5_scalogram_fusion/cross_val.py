@@ -1,0 +1,204 @@
+"""
+Phase 5 — leave-one-set-out cross-validation for the scalogram fusion model.
+
+Reads best hyperparams from results/grid_search.json (run grid_search.py first).
+Val rotation: fold i → test=sets[i], val=sets[(i+1)%13], train=remaining 11.
+
+Note: encoders are warm-started from the full-data Phase 1 + Phase 4 checkpoints
+for every fold (only the fusion head is re-trained per fold). This is a documented
+limitation — the encoders have seen all sets during their own training.
+
+Run from the thesis root:
+    python experiments/phase5_scalogram_fusion/cross_val.py
+
+Saves results/cross_val_results.json.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from src.data.fusion_scalogram_dataset import MATWIFusionScalogramDataset
+from src.models.multiscale_fusion_model import MultiScaleFusionModel
+from src.utils.cv_utils import make_loso_folds
+from src.utils.metrics import mae
+
+# ── Config ────────────────────────────────────────────────────────────────────
+DATA_ROOT     = ROOT / "data" / "raw"
+SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
+FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
+CKPT_DIR      = ROOT / "checkpoints"
+RESULTS_DIR   = Path(__file__).parent / "results"
+
+PHASE1_CKPT = CKPT_DIR / "phase1_best.pt"
+PHASE4_CKPT = CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
+
+BATCH_SIZE  = 16
+EPOCHS      = 60
+AUX_LAMBDA  = 0.2
+NUM_WORKERS = 0
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def build_model(device: str) -> MultiScaleFusionModel:
+    model = MultiScaleFusionModel()
+    model.load_phase1_weights(PHASE1_CKPT, device=device)
+    model.load_phase4_weights(PHASE4_CKPT, device=device)
+    model.freeze_image_encoder()
+    model.freeze_sensor_encoder()
+    return model.to(device)
+
+
+def train_fold(fold: dict, lr: float, weight_decay: float, device: str) -> dict:
+    train_ds = MATWIFusionScalogramDataset(
+        DATA_ROOT, SCALOGRAM_DIR, FEATURES_PATH,
+        sets=fold["train"], train_mode=True,
+    )
+    val_ds = MATWIFusionScalogramDataset(
+        DATA_ROOT, SCALOGRAM_DIR, FEATURES_PATH,
+        sets=fold["val"], train_mode=False,
+    )
+    test_ds = MATWIFusionScalogramDataset(
+        DATA_ROOT, SCALOGRAM_DIR, FEATURES_PATH,
+        sets=fold["test"], train_mode=False,
+    )
+
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True,  num_workers=NUM_WORKERS)
+    val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
+    test_loader  = DataLoader(test_ds,  batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
+
+    model     = build_model(device)
+    optimizer = torch.optim.SGD(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=lr, momentum=0.9, weight_decay=weight_decay,
+    )
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=1e-5)
+    criterion = nn.HuberLoss(delta=20.0)
+
+    best_val_mae = float("inf")
+    tmp_ckpt     = CKPT_DIR / "cv_tmp_phase5.pt"
+
+    for epoch in range(1, EPOCHS + 1):
+        model.train()
+        for images, scalograms, targets in train_loader:
+            images     = images.to(device)
+            scalograms = scalograms.to(device)
+            targets    = targets.to(device).unsqueeze(1)
+            optimizer.zero_grad()
+            p_final, p_aux = model(images, scalograms)
+            loss = criterion(p_final, targets) + AUX_LAMBDA * criterion(p_aux, targets)
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+        scheduler.step()
+
+        model.eval()
+        preds_list, targets_list = [], []
+        with torch.no_grad():
+            for images, scalograms, targets in val_loader:
+                preds_list.append(
+                    model(images.to(device), scalograms.to(device))[0].squeeze(1)
+                )
+                targets_list.append(targets.to(device))
+        val_mae_v = mae(torch.cat(preds_list), torch.cat(targets_list))
+
+        if val_mae_v < best_val_mae:
+            best_val_mae = val_mae_v
+            torch.save(model.state_dict(), tmp_ckpt)
+
+    # Evaluate best checkpoint on test fold
+    model.load_state_dict(torch.load(tmp_ckpt, map_location=device, weights_only=True))
+    model.eval()
+    preds_list, targets_list = [], []
+    with torch.no_grad():
+        for images, scalograms, targets in test_loader:
+            preds_list.append(
+                model(images.to(device), scalograms.to(device))[0].squeeze(1)
+            )
+            targets_list.append(targets.to(device))
+
+    all_preds   = torch.cat(preds_list)
+    all_targets = torch.cat(targets_list)
+    errors      = (all_preds - all_targets).abs()
+
+    return {
+        "fold":         fold["fold"],
+        "test_sets":    fold["test"],
+        "val_sets":     fold["val"],
+        "n_test":       len(test_ds),
+        "test_mae":     round(errors.mean().item(), 4),
+        "test_std":     round(errors.std().item(),  4),
+        "best_val_mae": round(best_val_mae, 4),
+    }
+
+
+def run():
+    device = (
+        "cuda" if torch.cuda.is_available()
+        else "mps" if torch.backends.mps.is_available()
+        else "cpu"
+    )
+    print(f"Device : {device}\n")
+
+    for p in (PHASE1_CKPT, PHASE4_CKPT):
+        if not p.exists():
+            sys.exit(f"Required checkpoint not found: {p}")
+
+    RESULTS_DIR.mkdir(exist_ok=True)
+    CKPT_DIR.mkdir(exist_ok=True)
+
+    gs_path = RESULTS_DIR / "grid_search.json"
+    if gs_path.exists():
+        with open(gs_path) as f:
+            best = json.load(f)["best"]
+        lr, wd = best["lr"], best["weight_decay"]
+        print(f"Using grid-search best: lr={lr:.0e}  weight_decay={wd:.0e}\n")
+    else:
+        lr, wd = 3e-3, 5e-3
+        print(f"grid_search.json not found — using defaults: lr={lr:.0e}  weight_decay={wd:.0e}\n")
+
+    folds        = make_loso_folds()
+    fold_results = []
+
+    for fold in folds:
+        print(f"Fold {fold['fold']:2d}  test={fold['test']}  val={fold['val']}  "
+              f"train_sets={fold['train']}")
+        result = train_fold(fold, lr, wd, device)
+        fold_results.append(result)
+        print(f"         test MAE = {result['test_mae']:.2f} ± {result['test_std']:.2f} µm  "
+              f"(n={result['n_test']})\n")
+
+    all_maes = [r["test_mae"] for r in fold_results]
+    mean_mae = sum(all_maes) / len(all_maes)
+    std_mae  = (sum((m - mean_mae) ** 2 for m in all_maes) / len(all_maes)) ** 0.5
+
+    print("=" * 60)
+    print(f"LOSO-CV  mean MAE = {mean_mae:.2f} µm  std across folds = {std_mae:.2f} µm")
+    print("=" * 60)
+    print("\nNote: encoders warm-started from full-data checkpoints for all folds.")
+
+    output = {
+        "model":        "phase5_two_tower_fusion",
+        "lr":           lr,
+        "weight_decay": wd,
+        "n_folds":      len(fold_results),
+        "mean_mae":     round(mean_mae, 4),
+        "std_mae":      round(std_mae,  4),
+        "encoder_note": "frozen encoders warm-started from full-data phase1+phase4 checkpoints",
+        "folds":        fold_results,
+    }
+    out_path = RESULTS_DIR / "cross_val_results.json"
+    with open(out_path, "w") as f:
+        json.dump(output, f, indent=2)
+    print(f"Saved → {out_path}")
+
+
+if __name__ == "__main__":
+    run()

@@ -32,20 +32,32 @@ class MATWIDataset(Dataset):
     Image-only dataset for MATWI tool wear regression.
 
     Args:
-        data_root: path to data/raw/ (contains labels.csv, sets.csv, Set1/, ...)
-        split: "train", "val", or "test"
+        data_root:  path to data/raw/ (contains labels.csv, sets.csv, Set1/, ...)
+        split:      "train", "val", or "test"  (ignored when `sets` is provided)
         image_size: resize target (default 224)
+        sets:       explicit list of set numbers to include; overrides split/SPLIT_MAP
+        train_mode: if provided, controls augmentation; if None, infers from split
     """
 
-    def __init__(self, data_root: str | Path, split: str, image_size: int = 224):
-        assert split in SPLIT_MAP, f"split must be one of {list(SPLIT_MAP)}"
+    def __init__(
+        self,
+        data_root:  str | Path,
+        split:      str | None  = None,
+        image_size: int         = 224,
+        sets:       list | None = None,
+        train_mode: bool | None = None,
+    ):
+        assert split is not None or sets is not None, "Provide split or sets"
+        if split is not None and sets is None:
+            assert split in SPLIT_MAP, f"split must be one of {list(SPLIT_MAP)}"
         self.data_root = Path(data_root)
 
         labels = pd.read_csv(self.data_root / "labels.csv")
-        sets   = pd.read_csv(self.data_root / "sets.csv", index_col=0)
+        sets_  = pd.read_csv(self.data_root / "sets.csv", index_col=0)
 
-        # Keep only rows that belong to this split
-        labels = labels[labels["Set"].isin(SPLIT_MAP[split])].reset_index(drop=True)
+        # Keep only rows that belong to the requested sets
+        active_sets = sets if sets is not None else SPLIT_MAP[split]
+        labels = labels[labels["Set"].isin(active_sets)].reset_index(drop=True)
 
         # Drop rows without an image or without a valid wear label
         labels = labels[labels["ImageFile"].notna()].reset_index(drop=True)
@@ -53,15 +65,16 @@ class MATWIDataset(Dataset):
 
         # Build per-set crop lookup: {set_number: (left, top, right, bottom)}
         self._crops: dict[int, tuple] = {}
-        for idx_label, row in sets.iterrows():
+        for idx_label, row in sets_.iterrows():
             # sets.csv index is "Set 1", "Set 2", etc.
             set_num = int(str(idx_label).replace("Set ", "").strip())
             self._crops[set_num] = _parse_crop(row["crop"])
 
         self.labels = labels
 
-        # Augmentation for training, plain transform for val/test
-        if split == "train":
+        # Augmentation: explicit train_mode overrides split-based inference
+        use_aug = train_mode if train_mode is not None else (split == "train")
+        if use_aug:
             self.transform = transforms.Compose([
                 transforms.Resize((image_size, image_size)),
                 transforms.RandomHorizontalFlip(),
@@ -76,6 +89,7 @@ class MATWIDataset(Dataset):
                 transforms.ToTensor(),
                 transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
             ])
+
 
     def __len__(self) -> int:
         return len(self.labels)

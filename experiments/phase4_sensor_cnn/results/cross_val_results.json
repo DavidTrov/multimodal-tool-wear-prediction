@@ -1,0 +1,179 @@
+{
+  "model": "phase4_multiscale_sensor_cnn",
+  "lr": 0.0005,
+  "weight_decay": 0.001,
+  "n_folds": 13,
+  "mean_mae": 66.4511,
+  "std_mae": 51.6782,
+  "folds": [
+    {
+      "fold": 0,
+      "test_sets": [
+        1
+      ],
+      "val_sets": [
+        2
+      ],
+      "n_test": 91,
+      "test_mae": 35.7304,
+      "test_std": 30.6164,
+      "best_val_mae": 30.1221
+    },
+    {
+      "fold": 1,
+      "test_sets": [
+        2
+      ],
+      "val_sets": [
+        3
+      ],
+      "n_test": 96,
+      "test_mae": 43.8922,
+      "test_std": 37.8396,
+      "best_val_mae": 55.3824
+    },
+    {
+      "fold": 2,
+      "test_sets": [
+        3
+      ],
+      "val_sets": [
+        4
+      ],
+      "n_test": 103,
+      "test_mae": 95.4618,
+      "test_std": 30.5865,
+      "best_val_mae": 33.2022
+    },
+    {
+      "fold": 3,
+      "test_sets": [
+        4
+      ],
+      "val_sets": [
+        5
+      ],
+      "n_test": 97,
+      "test_mae": 28.3934,
+      "test_std": 37.3838,
+      "best_val_mae": 167.342
+    },
+    {
+      "fold": 4,
+      "test_sets": [
+        5
+      ],
+      "val_sets": [
+        6
+      ],
+      "n_test": 61,
+      "test_mae": 178.6783,
+      "test_std": 109.5833,
+      "best_val_mae": 7.5065
+    },
+    {
+      "fold": 5,
+      "test_sets": [
+        6
+      ],
+      "val_sets": [
+        7
+      ],
+      "n_test": 147,
+      "test_mae": 11.4893,
+      "test_std": 7.2502,
+      "best_val_mae": 13.7881
+    },
+    {
+      "fold": 6,
+      "test_sets": [
+        7
+      ],
+      "val_sets": [
+        8
+      ],
+      "n_test": 100,
+      "test_mae": 40.0052,
+      "test_std": 11.0394,
+      "best_val_mae": 20.5184
+    },
+    {
+      "fold": 7,
+      "test_sets": [
+        8
+      ],
+      "val_sets": [
+        9
+      ],
+      "n_test": 99,
+      "test_mae": 27.1707,
+      "test_std": 20.9921,
+      "best_val_mae": 15.8994
+    },
+    {
+      "fold": 8,
+      "test_sets": [
+        9
+      ],
+      "val_sets": [
+        10
+      ],
+      "n_test": 100,
+      "test_mae": 26.2893,
+      "test_std": 12.5884,
+      "best_val_mae": 17.5446
+    },
+    {
+      "fold": 9,
+      "test_sets": [
+        10
+      ],
+      "val_sets": [
+        11
+      ],
+      "n_test": 100,
+      "test_mae": 28.7228,
+      "test_std": 26.0823,
+      "best_val_mae": 42.1397
+    },
+    {
+      "fold": 10,
+      "test_sets": [
+        11
+      ],
+      "val_sets": [
+        12
+      ],
+      "n_test": 100,
+      "test_mae": 155.6877,
+      "test_std": 69.6533,
+      "best_val_mae": 63.3487
+    },
+    {
+      "fold": 11,
+      "test_sets": [
+        12
+      ],
+      "val_sets": [
+        13
+      ],
+      "n_test": 50,
+      "test_mae": 109.4247,
+      "test_std": 65.033,
+      "best_val_mae": 30.562
+    },
+    {
+      "fold": 12,
+      "test_sets": [
+        13
+      ],
+      "val_sets": [
+        1
+      ],
+      "n_test": 50,
+      "test_mae": 82.9183,
+      "test_std": 31.907,
+      "best_val_mae": 20.2611
+    }
+  ]
+}

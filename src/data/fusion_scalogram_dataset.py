@@ -37,8 +37,10 @@ class MATWIFusionScalogramDataset(Dataset):
     data_root      : path to data/raw/  (contains labels.csv, sets.csv, Set1/, …)
     scalogram_dir  : path to data/processed/scalograms/
     features_path  : path to sensor_features_physics.parquet  (provides labels_idx)
-    split          : "train", "val", or "test"
+    split          : "train", "val", or "test"  (ignored when `sets` is provided)
     image_size     : resize target for images (default 224)
+    sets           : explicit list of set numbers; overrides split/SPLIT_MAP
+    train_mode     : if provided, controls augmentation; if None, infers from split
     """
 
     def __init__(
@@ -46,23 +48,29 @@ class MATWIFusionScalogramDataset(Dataset):
         data_root:     str | Path,
         scalogram_dir: str | Path,
         features_path: str | Path,
-        split:         str,
-        image_size:    int = 224,
+        split:         str | None  = None,
+        image_size:    int         = 224,
+        sets:          list | None = None,
+        train_mode:    bool | None = None,
     ):
-        assert split in SPLIT_MAP, f"split must be one of {list(SPLIT_MAP)}"
+        assert split is not None or sets is not None, "Provide split or sets"
+        if split is not None and sets is None:
+            assert split in SPLIT_MAP, f"split must be one of {list(SPLIT_MAP)}"
         self.data_root     = Path(data_root)
         self.scalogram_dir = Path(scalogram_dir)
+
+        active_sets = sets if sets is not None else SPLIT_MAP[split]
 
         # ── Image-side metadata ────────────────────────────────────────────────
         labels = pd.read_csv(self.data_root / "labels.csv")
         labels["labels_idx"] = labels.index           # preserve original row index
-        labels = labels[labels["Set"].isin(SPLIT_MAP[split])]
+        labels = labels[labels["Set"].isin(active_sets)]
         labels = labels[labels["ImageFile"].notna()]
         labels = labels[labels["wear"].notna()]
 
         # ── Scalogram-side metadata ────────────────────────────────────────────
         feats = pd.read_parquet(features_path)
-        feats = feats[feats["Set"].isin(SPLIT_MAP[split])]
+        feats = feats[feats["Set"].isin(active_sets)]
         scalogram_exists = feats["labels_idx"].apply(
             lambda idx: (self.scalogram_dir / f"{int(idx)}.pt").exists()
         )
@@ -73,14 +81,15 @@ class MATWIFusionScalogramDataset(Dataset):
         self.meta = merged[["labels_idx", "Set", "wear", "ImageFile"]].reset_index(drop=True)
 
         # ── Per-set crop lookup ────────────────────────────────────────────────
-        sets = pd.read_csv(self.data_root / "sets.csv", index_col=0)
+        sets_df = pd.read_csv(self.data_root / "sets.csv", index_col=0)
         self._crops: dict[int, tuple] = {}
-        for idx_label, row in sets.iterrows():
+        for idx_label, row in sets_df.iterrows():
             set_num = int(str(idx_label).replace("Set ", "").strip())
             self._crops[set_num] = _parse_crop(row["crop"])
 
         # ── Image transforms ───────────────────────────────────────────────────
-        if split == "train":
+        use_aug = train_mode if train_mode is not None else (split == "train")
+        if use_aug:
             self.img_transform = transforms.Compose([
                 transforms.Resize((image_size, image_size)),
                 transforms.RandomHorizontalFlip(),

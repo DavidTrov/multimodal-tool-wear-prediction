@@ -31,13 +31,17 @@ class MATWISensorScalogramDataset(Dataset):
         self,
         scalogram_dir: str | Path,
         features_path: str | Path,
-        split:         str,
+        split:         str | None  = None,
+        sets:          list | None = None,
     ):
-        assert split in SPLIT_MAP, f"split must be one of {list(SPLIT_MAP)}"
+        assert split is not None or sets is not None, "Provide split or sets"
+        if split is not None and sets is None:
+            assert split in SPLIT_MAP, f"split must be one of {list(SPLIT_MAP)}"
         self.scalogram_dir = Path(scalogram_dir)
 
+        active_sets = sets if sets is not None else SPLIT_MAP[split]
         feats = pd.read_parquet(features_path)
-        feats = feats[feats["Set"].isin(SPLIT_MAP[split])]
+        feats = feats[feats["Set"].isin(active_sets)]
 
         mask = feats["labels_idx"].apply(
             lambda idx: (self.scalogram_dir / f"{int(idx)}.pt").exists()

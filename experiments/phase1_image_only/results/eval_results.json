@@ -2,10 +2,10 @@
   "train": {
     "split": "train",
     "n_samples": 647,
-    "mae": 35.37,
-    "mae_std": 38.51,
+    "mae": 36.06,
+    "mae_std": 37.74,
     "mae_min": 0.03,
-    "mae_max": 662.03
+    "mae_max": 584.9
   },
   "val": {
     "split": "val",

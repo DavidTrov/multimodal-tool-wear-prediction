@@ -1,0 +1,54 @@
+{
+  "best": {
+    "lr": 0.0005,
+    "weight_decay": 0.001,
+    "val_mae": 33.0114
+  },
+  "all": [
+    {
+      "lr": 0.0005,
+      "weight_decay": 0.001,
+      "val_mae": 33.0114
+    },
+    {
+      "lr": 0.0005,
+      "weight_decay": 0.005,
+      "val_mae": 39.3396
+    },
+    {
+      "lr": 0.0005,
+      "weight_decay": 0.01,
+      "val_mae": 45.3909
+    },
+    {
+      "lr": 0.001,
+      "weight_decay": 0.001,
+      "val_mae": 49.1945
+    },
+    {
+      "lr": 0.001,
+      "weight_decay": 0.005,
+      "val_mae": 49.6407
+    },
+    {
+      "lr": 0.001,
+      "weight_decay": 0.01,
+      "val_mae": 45.1751
+    },
+    {
+      "lr": 0.003,
+      "weight_decay": 0.001,
+      "val_mae": 46.0175
+    },
+    {
+      "lr": 0.003,
+      "weight_decay": 0.005,
+      "val_mae": 50.0519
+    },
+    {
+      "lr": 0.003,
+      "weight_decay": 0.01,
+      "val_mae": 46.1002
+    }
+  ]
+}
