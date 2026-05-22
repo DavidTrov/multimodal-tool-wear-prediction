@@ -1,0 +1,1270 @@
+{
+  "pass_threshold": 0.005,
+  "n_tested": 50,
+  "n_pass": 50,
+  "samples": [
+    {
+      "labels_idx": 527,
+      "sensor_file": "MATWI/Set6/sensordata/Test_0015_1_03_523_2023-02-22T13_48_37.885566.csv",
+      "n_cut_samples": 54046,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 3e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 0.0,
+          "acoustic": 1e-06,
+          "fx": 3e-06,
+          "fy": 3e-06,
+          "fz": {
+            "max_diff": 0.05197,
+            "low_energy": true
+          }
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.05197,
+        "mean_abs_diff": 0.000354
+      }
+    },
+    {
+      "labels_idx": 271,
+      "sensor_file": "MATWI/Set3/sensordata/Test_0015_1_03_186_2022-12-23T13_32_01.390559.csv",
+      "n_cut_samples": 99000,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 0.0,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": {
+            "max_diff": 9e-06,
+            "low_energy": true
+          },
+          "fy": {
+            "max_diff": 8e-06,
+            "low_energy": true
+          },
+          "fz": {
+            "max_diff": 1e-05,
+            "low_energy": true
+          }
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.084316,
+        "mean_abs_diff": 0.001237
+      }
+    },
+    {
+      "labels_idx": 1401,
+      "sensor_file": "MATWI/Set16/sensordata/Test_0015_1_00_221_2023-06-08T11_02_30.965948.csv",
+      "n_cut_samples": 108353,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 2.9e-05,
+        "mean_abs_diff": 1e-06,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 1.3e-05,
+          "fy": 9e-06,
+          "fz": 2.9e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.084862,
+        "mean_abs_diff": 0.000762
+      }
+    },
+    {
+      "labels_idx": 1201,
+      "sensor_file": "MATWI/Set14/sensordata/Test_0015_1_00_017_2023-06-07T09_39_15.382111.csv",
+      "n_cut_samples": 47944,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 5e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": {
+            "max_diff": 6e-06,
+            "low_energy": true
+          },
+          "fy": {
+            "max_diff": 4e-06,
+            "low_energy": true
+          },
+          "fz": 5e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.29661,
+        "mean_abs_diff": 0.001704
+      }
+    },
+    {
+      "labels_idx": 59,
+      "sensor_file": "MATWI/Set1/sensordata/File_name_2022-09-12T11_29_27.691387.csv",
+      "n_cut_samples": 51349,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 2.1e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 1e-06,
+          "fx": 1.3e-05,
+          "fy": 6e-06,
+          "fz": 2.1e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.02858,
+        "mean_abs_diff": 0.00025
+      }
+    },
+    {
+      "labels_idx": 1514,
+      "sensor_file": "MATWI/Set17/sensordata/Test_0015_1_00_024_2023-07-03T13_01_49.666200.csv",
+      "n_cut_samples": 43203,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 7e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 1e-06,
+          "fx": 2e-06,
+          "fy": 6e-06,
+          "fz": 7e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.073738,
+        "mean_abs_diff": 0.000726
+      }
+    },
+    {
+      "labels_idx": 438,
+      "sensor_file": "MATWI/Set5/sensordata/Test_0015_1_03_367_2023-02-21T12_54_59.895634.csv",
+      "n_cut_samples": 66826,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.7e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 1.7e-05,
+          "fy": 6e-06,
+          "fz": 6e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.060552,
+        "mean_abs_diff": 0.000285
+      }
+    },
+    {
+      "labels_idx": 331,
+      "sensor_file": "MATWI/Set4/sensordata/Test_0015_1_03_248_2023-02-20T09_06_06.312703.csv",
+      "n_cut_samples": 54150,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.5e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 1.3e-05,
+          "fy": 5e-06,
+          "fz": 1.5e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.042169,
+        "mean_abs_diff": 0.00062
+      }
+    },
+    {
+      "labels_idx": 1084,
+      "sensor_file": "MATWI/Set11/sensordata/Test_0015_1_02_296_2023-03-06T11_56_33.587883.csv",
+      "n_cut_samples": 26539,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 7e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": {
+            "max_diff": 0.000156,
+            "low_energy": true
+          },
+          "fy": {
+            "max_diff": 1.7e-05,
+            "low_energy": true
+          },
+          "fz": 7e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.080847,
+        "mean_abs_diff": 0.000261
+      }
+    },
+    {
+      "labels_idx": 682,
+      "sensor_file": "MATWI/Set7/sensordata/Test_0015_1_00_089_2023-02-23T11_43_24.956785.csv",
+      "n_cut_samples": 59800,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 4e-06,
+          "fy": {
+            "max_diff": 2e-06,
+            "low_energy": true
+          },
+          "fz": 1e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.044436,
+        "mean_abs_diff": 0.000233
+      }
+    },
+    {
+      "labels_idx": 367,
+      "sensor_file": "MATWI/Set4/sensordata/Test_0015_1_03_287_2023-02-20T12_02_44.041646.csv",
+      "n_cut_samples": 54820,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 0.0,
+          "acoustic": 1e-06,
+          "fx": 1e-05,
+          "fy": 6e-06,
+          "fz": {
+            "max_diff": 0.003833,
+            "low_energy": true
+          }
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 1.0,
+        "mean_abs_diff": 0.000728
+      }
+    },
+    {
+      "labels_idx": 862,
+      "sensor_file": "MATWI/Set9/sensordata/Test_0015_1_02_070_2023-03-02T10_51_12.517855.csv",
+      "n_cut_samples": 57173,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 8e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 4e-06,
+          "fy": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "fz": 8e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.101882,
+        "mean_abs_diff": 0.000284
+      }
+    },
+    {
+      "labels_idx": 649,
+      "sensor_file": "MATWI/Set7/sensordata/Test_0015_1_00_056_2023-02-23T10_51_29.514799.csv",
+      "n_cut_samples": 59365,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 0.001,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 1e-06,
+          "fx": 0.001,
+          "fy": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "fz": 1.2e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.062145,
+        "mean_abs_diff": 0.000205
+      }
+    },
+    {
+      "labels_idx": 764,
+      "sensor_file": "MATWI/Set8/sensordata/Test_0015_1_02_071_2023-02-24T10_40_37.466395.csv",
+      "n_cut_samples": 56424,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 9e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 6e-06,
+          "fy": {
+            "max_diff": 2e-06,
+            "low_energy": true
+          },
+          "fz": 9e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.08726,
+        "mean_abs_diff": 0.000178
+      }
+    },
+    {
+      "labels_idx": 259,
+      "sensor_file": "MATWI/Set3/sensordata/Test_0015_1_03_174_2022-12-23T12_42_18.609189.csv",
+      "n_cut_samples": 99000,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 0.0,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": {
+            "max_diff": 6e-06,
+            "low_energy": true
+          },
+          "fy": {
+            "max_diff": 9e-06,
+            "low_energy": true
+          },
+          "fz": {
+            "max_diff": 7e-06,
+            "low_energy": true
+          }
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.068529,
+        "mean_abs_diff": 0.000586
+      }
+    },
+    {
+      "labels_idx": 864,
+      "sensor_file": "MATWI/Set9/sensordata/Test_0015_1_02_072_2023-03-02T10_54_17.916221.csv",
+      "n_cut_samples": 57040,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 3e-06,
+          "fy": {
+            "max_diff": 2e-06,
+            "low_energy": true
+          },
+          "fz": 1e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.040518,
+        "mean_abs_diff": 0.000231
+      }
+    },
+    {
+      "labels_idx": 30,
+      "sensor_file": "MATWI/Set1/sensordata/File_name_2022-09-12T09_55_47.077236.csv",
+      "n_cut_samples": 50687,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.5e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 9e-06,
+          "fy": 7e-06,
+          "fz": 1.5e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.071639,
+        "mean_abs_diff": 0.000564
+      }
+    },
+    {
+      "labels_idx": 654,
+      "sensor_file": "MATWI/Set7/sensordata/Test_0015_1_00_061_2023-02-23T10_59_20.209720.csv",
+      "n_cut_samples": 59606,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.1e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 2e-06,
+          "fy": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "fz": 1.1e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.0471,
+        "mean_abs_diff": 0.000197
+      }
+    },
+    {
+      "labels_idx": 500,
+      "sensor_file": "MATWI/Set6/sensordata/Test_0015_1_03_496_2023-02-22T13_07_30.555616.csv",
+      "n_cut_samples": 50014,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 4.6e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 2e-06,
+          "fy": 4e-06,
+          "fz": 4.6e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.042718,
+        "mean_abs_diff": 0.000272
+      }
+    },
+    {
+      "labels_idx": 1534,
+      "sensor_file": "MATWI/Set17/sensordata/Test_0015_1_00_044_2023-07-03T13_38_02.301930.csv",
+      "n_cut_samples": 43351,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.6e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 2e-06,
+          "fy": 6e-06,
+          "fz": 1.6e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.098162,
+        "mean_abs_diff": 0.001498
+      }
+    },
+    {
+      "labels_idx": 914,
+      "sensor_file": "MATWI/Set10/sensordata/Test_0015_1_02_123_2023-03-02T12_20_44.451986.csv",
+      "n_cut_samples": 54259,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 3e-05,
+        "mean_abs_diff": 1e-06,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": {
+            "max_diff": 3e-06,
+            "low_energy": true
+          },
+          "fy": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "fz": 3e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.087404,
+        "mean_abs_diff": 0.000658
+      }
+    },
+    {
+      "labels_idx": 924,
+      "sensor_file": "MATWI/Set10/sensordata/Test_0015_1_02_133_2023-03-02T12_35_52.732261.csv",
+      "n_cut_samples": 54206,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 4.2e-05,
+        "mean_abs_diff": 1e-06,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": {
+            "max_diff": 3e-06,
+            "low_energy": true
+          },
+          "fy": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "fz": 4.2e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.089549,
+        "mean_abs_diff": 0.00037
+      }
+    },
+    {
+      "labels_idx": 198,
+      "sensor_file": "MATWI/Set3/sensordata/Test_0015_1_03_112_2022-12-20T10_18_46.366100.csv",
+      "n_cut_samples": 99000,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 0.0,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": {
+            "max_diff": 7e-06,
+            "low_energy": true
+          },
+          "fy": {
+            "max_diff": 7e-06,
+            "low_energy": true
+          },
+          "fz": {
+            "max_diff": 1.1e-05,
+            "low_energy": true
+          }
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.083956,
+        "mean_abs_diff": 0.000609
+      }
+    },
+    {
+      "labels_idx": 526,
+      "sensor_file": "MATWI/Set6/sensordata/Test_0015_1_03_522_2023-02-22T13_47_05.106735.csv",
+      "n_cut_samples": 54072,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 3e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 0.0,
+          "acoustic": 0.0,
+          "fx": 3e-06,
+          "fy": 3e-06,
+          "fz": {
+            "max_diff": 0.026758,
+            "low_energy": true
+          }
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.072615,
+        "mean_abs_diff": 0.000521
+      }
+    },
+    {
+      "labels_idx": 65,
+      "sensor_file": "MATWI/Set1/sensordata/File_name_2022-09-12T11_48_46.384767.csv",
+      "n_cut_samples": 51246,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.8e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 1.1e-05,
+          "fy": 8e-06,
+          "fz": 1.8e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.050943,
+        "mean_abs_diff": 0.000379
+      }
+    },
+    {
+      "labels_idx": 1170,
+      "sensor_file": "MATWI/Set13/sensordata/Test_0015_1_02_080_2023-03-16T10_07_15.555116.csv",
+      "n_cut_samples": 50915,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 7e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 6e-06,
+          "fy": 4e-06,
+          "fz": 7e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.084921,
+        "mean_abs_diff": 0.000501
+      }
+    },
+    {
+      "labels_idx": 535,
+      "sensor_file": "MATWI/Set6/sensordata/Test_0015_1_03_531_2023-02-22T14_00_49.600305.csv",
+      "n_cut_samples": 54099,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 3e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 0.0,
+          "acoustic": 0.0,
+          "fx": 3e-06,
+          "fy": 3e-06,
+          "fz": {
+            "max_diff": 1.7e-05,
+            "low_energy": true
+          }
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.045041,
+        "mean_abs_diff": 0.000331
+      }
+    },
+    {
+      "labels_idx": 298,
+      "sensor_file": "MATWI/Set4/sensordata/Test_0015_1_03_214_2023-02-16T11_24_13.201056.csv",
+      "n_cut_samples": 54792,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 5e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 3e-06,
+          "fy": 2e-06,
+          "fz": 5e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.075781,
+        "mean_abs_diff": 0.000376
+      }
+    },
+    {
+      "labels_idx": 543,
+      "sensor_file": "MATWI/Set6/sensordata/Test_0015_1_03_539_2023-02-22T14_13_04.344431.csv",
+      "n_cut_samples": 35469,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 0.0,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": {
+            "max_diff": 3e-06,
+            "low_energy": true
+          },
+          "fy": {
+            "max_diff": 3e-06,
+            "low_energy": true
+          },
+          "fz": {
+            "max_diff": 1.7e-05,
+            "low_energy": true
+          }
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.060542,
+        "mean_abs_diff": 0.000378
+      }
+    },
+    {
+      "labels_idx": 1065,
+      "sensor_file": "MATWI/Set11/sensordata/Test_0015_1_02_277_2023-03-06T11_25_34.865100.csv",
+      "n_cut_samples": 64314,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 9e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 9e-06,
+          "fy": 5e-06,
+          "fz": 9e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.030853,
+        "mean_abs_diff": 0.000399
+      }
+    },
+    {
+      "labels_idx": 342,
+      "sensor_file": "MATWI/Set4/sensordata/Test_0015_1_03_261_2023-02-20T10_34_38.872633.csv",
+      "n_cut_samples": 54314,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 3.3e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 1.5e-05,
+          "fy": 6e-06,
+          "fz": 3.3e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.125551,
+        "mean_abs_diff": 0.000235
+      }
+    },
+    {
+      "labels_idx": 999,
+      "sensor_file": "MATWI/Set11/sensordata/Test_0015_1_02_210_2023-03-06T09_25_54.320171.csv",
+      "n_cut_samples": 62523,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 8.6e-05,
+        "mean_abs_diff": 1e-06,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 1.6e-05,
+          "fy": 7e-06,
+          "fz": 8.6e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.042613,
+        "mean_abs_diff": 0.00034
+      }
+    },
+    {
+      "labels_idx": 986,
+      "sensor_file": "MATWI/Set10/sensordata/Test_0015_1_02_196_2023-03-02T14_40_40.803276.csv",
+      "n_cut_samples": 53164,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 0.001001,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 3e-06,
+          "fy": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "fz": 0.001001
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.072909,
+        "mean_abs_diff": 0.00014
+      }
+    },
+    {
+      "labels_idx": 705,
+      "sensor_file": "MATWI/Set8/sensordata/Test_0015_1_00_010_2023-02-24T09_02_59.790112.csv",
+      "n_cut_samples": 56318,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.1e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 6e-06,
+          "fy": {
+            "max_diff": 3e-06,
+            "low_energy": true
+          },
+          "fz": 1.1e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.073973,
+        "mean_abs_diff": 0.000261
+      }
+    },
+    {
+      "labels_idx": 478,
+      "sensor_file": "MATWI/Set6/sensordata/Test_0015_1_03_422_2023-02-22T10_24_25.318345.csv",
+      "n_cut_samples": 68541,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 5e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 3e-06,
+          "fy": {
+            "max_diff": 2e-06,
+            "low_energy": true
+          },
+          "fz": 5e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.034596,
+        "mean_abs_diff": 0.000198
+      }
+    },
+    {
+      "labels_idx": 1079,
+      "sensor_file": "MATWI/Set11/sensordata/Test_0015_1_02_291_2023-03-06T11_48_23.578623.csv",
+      "n_cut_samples": 65114,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.1e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 1e-06,
+          "fx": 1.1e-05,
+          "fy": 5e-06,
+          "fz": 9e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.044056,
+        "mean_abs_diff": 0.000196
+      }
+    },
+    {
+      "labels_idx": 354,
+      "sensor_file": "MATWI/Set4/sensordata/Test_0015_1_03_273_2023-02-20T11_18_05.956456.csv",
+      "n_cut_samples": 54522,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.3e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 1.3e-05,
+          "fy": 6e-06,
+          "fz": {
+            "max_diff": 0.000114,
+            "low_energy": true
+          }
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.03628,
+        "mean_abs_diff": 0.000207
+      }
+    },
+    {
+      "labels_idx": 99,
+      "sensor_file": "MATWI/Set2/sensordata/Test_0015_1_03_010_2022-11-24T10_25_24.318565.csv",
+      "n_cut_samples": 53510,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 9e-06,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 8e-06,
+          "fy": 5e-06,
+          "fz": 9e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.122381,
+        "mean_abs_diff": 0.000244
+      }
+    },
+    {
+      "labels_idx": 306,
+      "sensor_file": "MATWI/Set4/sensordata/Test_0015_1_03_222_2023-02-16T11_48_25.465821.csv",
+      "n_cut_samples": 54498,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 0.001,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 3e-06,
+          "fy": 0.001,
+          "fz": 9e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.062589,
+        "mean_abs_diff": 0.000437
+      }
+    },
+    {
+      "labels_idx": 124,
+      "sensor_file": "MATWI/Set2/sensordata/Test_0015_1_03_036_2022-11-24T11_28_10.536881.csv",
+      "n_cut_samples": 52641,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.1e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 8e-06,
+          "fy": 8e-06,
+          "fz": 1.1e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.035996,
+        "mean_abs_diff": 0.000338
+      }
+    },
+    {
+      "labels_idx": 865,
+      "sensor_file": "MATWI/Set9/sensordata/Test_0015_1_02_073_2023-03-02T10_55_52.179773.csv",
+      "n_cut_samples": 57864,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.1e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 2e-06,
+          "fy": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "fz": 1.1e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.050033,
+        "mean_abs_diff": 0.000231
+      }
+    },
+    {
+      "labels_idx": 381,
+      "sensor_file": "MATWI/Set4/sensordata/Test_0015_1_03_304_2023-02-21T10_04_55.104881.csv",
+      "n_cut_samples": 54606,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 2e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 2e-05,
+          "fy": 7e-06,
+          "fz": {
+            "max_diff": 1.6e-05,
+            "low_energy": true
+          }
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.079042,
+        "mean_abs_diff": 0.000251
+      }
+    },
+    {
+      "labels_idx": 964,
+      "sensor_file": "MATWI/Set10/sensordata/Test_0015_1_02_174_2023-03-02T14_07_21.631365.csv",
+      "n_cut_samples": 54741,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 2e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 3e-06,
+          "fy": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "fz": 2e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.016665,
+        "mean_abs_diff": 9.5e-05
+      }
+    },
+    {
+      "labels_idx": 788,
+      "sensor_file": "MATWI/Set8/sensordata/Test_0015_1_02_095_2023-02-24T11_17_37.451600.csv",
+      "n_cut_samples": 56505,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 3e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 3e-06,
+          "fy": {
+            "max_diff": 2e-06,
+            "low_energy": true
+          },
+          "fz": 3e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.027036,
+        "mean_abs_diff": 0.000135
+      }
+    },
+    {
+      "labels_idx": 1393,
+      "sensor_file": "MATWI/Set16/sensordata/Test_0015_1_00_213_2023-06-08T10_42_24.214694.csv",
+      "n_cut_samples": 107350,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.9e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 1.1e-05,
+          "fy": 8e-06,
+          "fz": 1.9e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.037354,
+        "mean_abs_diff": 0.000334
+      }
+    },
+    {
+      "labels_idx": 135,
+      "sensor_file": "MATWI/Set2/sensordata/Test_0015_1_03_047_2022-11-24T11_52_44.845342.csv",
+      "n_cut_samples": 52725,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 3e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 6e-06,
+          "fy": 6e-06,
+          "fz": 3e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.055974,
+        "mean_abs_diff": 0.000294
+      }
+    },
+    {
+      "labels_idx": 692,
+      "sensor_file": "MATWI/Set7/sensordata/Test_0015_1_00_099_2023-02-23T11_59_12.463828.csv",
+      "n_cut_samples": 59689,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.9e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 3e-06,
+          "fy": {
+            "max_diff": 1e-06,
+            "low_energy": true
+          },
+          "fz": 1.9e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.040237,
+        "mean_abs_diff": 0.000266
+      }
+    },
+    {
+      "labels_idx": 432,
+      "sensor_file": "MATWI/Set5/sensordata/Test_0015_1_03_361_2023-02-21T12_44_52.674196.csv",
+      "n_cut_samples": 67493,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.2e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": 1e-06,
+          "acoustic": 0.0,
+          "fx": 1.2e-05,
+          "fy": 6e-06,
+          "fz": 9e-06
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.049969,
+        "mean_abs_diff": 0.000369
+      }
+    },
+    {
+      "labels_idx": 720,
+      "sensor_file": "MATWI/Set8/sensordata/Test_0015_1_00_026_2023-02-24T09_27_47.507744.csv",
+      "n_cut_samples": 56478,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 2.4e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 0.0,
+          "fx": 6e-06,
+          "fy": {
+            "max_diff": 3e-06,
+            "low_energy": true
+          },
+          "fz": 2.4e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.091189,
+        "mean_abs_diff": 0.000569
+      }
+    },
+    {
+      "labels_idx": 1258,
+      "sensor_file": "MATWI/Set14/sensordata/Test_0015_1_00_075_2023-06-07T11_59_10.679338.csv",
+      "n_cut_samples": 47736,
+      "py_direct_vs_mcu_c": {
+        "max_abs_diff": 1.2e-05,
+        "mean_abs_diff": 0.0,
+        "pass": true,
+        "per_channel": {
+          "acc": {
+            "max_diff": 0.0,
+            "low_energy": true
+          },
+          "acoustic": 1e-06,
+          "fx": 7e-06,
+          "fy": {
+            "max_diff": 5e-06,
+            "low_energy": true
+          },
+          "fz": 1.2e-05
+        }
+      },
+      "mcu_vs_fft_desktop": {
+        "max_abs_diff": 0.142092,
+        "mean_abs_diff": 0.001189
+      }
+    }
+  ]
+}

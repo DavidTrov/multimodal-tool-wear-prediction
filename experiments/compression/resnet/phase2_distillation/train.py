@@ -38,7 +38,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
 from src.data.dataset import MATWIDataset
@@ -72,48 +72,42 @@ def validate(model, loader, device):
     return mae(p, t), (p - t).abs().std().item()
 
 
-def load_pruned_student(device):
+def load_pruned_student(device, ckpt_path):
     """
     The pruned model has a different architecture than the original ResNet-18
     (fewer channels), so we cannot use build_resnet18_regressor() directly.
-    We reconstruct it by loading the pruned checkpoint via torch-pruning's
-    model_graph, or more simply by saving/loading the full model object.
-
-    Since train.py (Phase 1) saves only state_dict, we need to rebuild the
-    architecture first.  torch-pruning provides tp.load() for this, but the
-    simplest portable approach is to save the full model in Phase 1.
-
-    We handle both cases here: try tp.load() first, fall back to state_dict.
+    Phase 1 saves the full model object via torch.save(model, ...), so we
+    load it directly here.
     """
-    pruned_ckpt = CKPT_DIR / "pruned.pt"
-    if not pruned_ckpt.exists():
-        sys.exit(f"Pruned checkpoint not found: {pruned_ckpt}\nRun phase1_pruning/train.py first.")
+    ckpt_path = Path(ckpt_path)
+    if not ckpt_path.exists():
+        sys.exit(f"Pruned checkpoint not found: {ckpt_path}\nRun phase1_pruning/train.py first.")
 
-    try:
-        import torch_pruning as tp  # noqa: F401
-        # Try loading as a full model object (if saved with torch.save(model))
-        obj = torch.load(pruned_ckpt, map_location=device, weights_only=False)
-        if isinstance(obj, dict):
-            # state_dict only — we need the architecture; try a workaround
-            raise RuntimeError("state_dict only")
-        model = obj.to(device)
-        print("Loaded pruned model object from pruned.pt")
-    except Exception:
+    obj = torch.load(ckpt_path, map_location=device, weights_only=False)
+    if isinstance(obj, dict):
         sys.exit(
-            "Could not reconstruct pruned architecture from state_dict.\n"
-            "Re-run phase1_pruning/train.py — it now saves the full model object."
+            "Checkpoint contains only a state_dict — need the full model object.\n"
+            "Re-run phase1_pruning/train.py (it saves torch.save(model, ...))."
         )
+    model = obj.to(device)
+    print(f"Loaded pruned model from {ckpt_path.name}")
     return model
 
 
-def run(alpha: float, epochs: int):
+def run(alpha: float, epochs: int, student_ckpt: str, suffix: str):
     device = (
         "cuda" if torch.cuda.is_available()
         else "mps" if torch.backends.mps.is_available()
         else "cpu"
     )
+    ckpt_name    = f"resnet_distilled{suffix}.pt" if suffix else "distilled.pt"
+    results_name = f"distillation_results{suffix}.json"
+    history_name = f"distillation_history{suffix}.json"
+
     print(f"Device : {device}")
-    print(f"α      : {alpha}  |  Epochs: {epochs}\n")
+    print(f"α      : {alpha}  |  Epochs: {epochs}")
+    print(f"Student: {student_ckpt}")
+    print(f"Output : {ckpt_name}\n")
 
     # ── Load teacher (frozen original ResNet-18) ──────────────────────────────
     phase1_ckpt = CKPT_DIR / "phase1_best.pt"
@@ -128,7 +122,7 @@ def run(alpha: float, epochs: int):
     print("Teacher (phase1_best.pt) loaded and frozen")
 
     # ── Load pruned student ───────────────────────────────────────────────────
-    student = load_pruned_student(device)
+    student = load_pruned_student(device, student_ckpt)
     stats = model_size_report(student)
     print(f"Student params: {stats['n_params']:,}  |  INT8: {stats['int8_kb']} KB  |  INT4: {stats['int4_kb']} KB\n")
 
@@ -192,8 +186,8 @@ def run(alpha: float, epochs: int):
 
         if val_mae_val < best_val_mae:
             best_val_mae = val_mae_val
-            torch.save(student, CKPT_DIR / "distilled.pt")
-            print(f"  ✓ New best: {best_val_mae:.2f} µm  (saved distilled.pt)")
+            torch.save(student, CKPT_DIR / ckpt_name)
+            print(f"  ✓ New best: {best_val_mae:.2f} µm  (saved {ckpt_name})")
 
     # ── Report ────────────────────────────────────────────────────────────────
     print("\n" + "─" * 60)
@@ -201,11 +195,11 @@ def run(alpha: float, epochs: int):
     print("─" * 60)
     print(f"Val MAE before : {val_mae_before:.2f} µm")
     print(f"Val MAE after  : {best_val_mae:.2f} µm")
-    print(f"INT4 size      : {stats['int4_kb']} KB  (target: ≤256 KB)")
+    print(f"INT8 size      : {stats['int8_kb']} KB  (target: ≤2048 KB — NXP FRDM-MCXN947 flash)")
     print("─" * 60)
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    with open(RESULTS_DIR / "distillation_history.json", "w") as f:
+    with open(RESULTS_DIR / history_name, "w") as f:
         json.dump(history, f, indent=2)
     results = {
         "alpha": alpha, "epochs": epochs,
@@ -213,7 +207,7 @@ def run(alpha: float, epochs: int):
         "val_mae_after": round(best_val_mae, 2),
         **stats,
     }
-    with open(RESULTS_DIR / "distillation_results.json", "w") as f:
+    with open(RESULTS_DIR / results_name, "w") as f:
         json.dump(results, f, indent=2)
     print(f"Results saved to {RESULTS_DIR}")
 
@@ -224,5 +218,14 @@ if __name__ == "__main__":
                         help="Distillation weight α (default: 0.5)")
     parser.add_argument("--epochs", type=int,   default=DEFAULT_EPOCHS,
                         help="Training epochs (default: 40)")
+    parser.add_argument("--student-ckpt", type=str,
+                        default=str(ROOT / "checkpoints" / "pruned.pt"),
+                        help="Path to the pruned student checkpoint "
+                             "(default: checkpoints/pruned.pt)")
+    parser.add_argument("--output-suffix", type=str, default="",
+                        help="Suffix appended to output filenames "
+                             "(e.g. '_90' → resnet_distilled_90.pt). "
+                             "Empty string preserves legacy name (distilled.pt).")
     args = parser.parse_args()
-    run(alpha=args.alpha, epochs=args.epochs)
+    run(alpha=args.alpha, epochs=args.epochs,
+        student_ckpt=args.student_ckpt, suffix=args.output_suffix)
