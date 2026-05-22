@@ -49,7 +49,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
 from src.data.dataset import MATWIDataset
@@ -235,19 +235,120 @@ def classify_and_assign(results, target_sparsity, sensitive_t, very_sensitive_t,
     return mapping, classes
 
 
+# ── Target-params scaling ────────────────────────────────────────────────────
+
+def scale_sparsity_map_to_target(
+    layer_sparsity_map: dict,
+    sensitivity_results: list,
+    target_params: int,
+    model: nn.Module,
+    device,
+    max_sparsity: float = 0.92,
+) -> dict:
+    """
+    Binary-search a global scale factor `m` such that pruning with
+    `min(assigned_sparsity * m, max_sparsity)` per layer yields a model with
+    ≤ target_params parameters.
+
+    Layers previously assigned 0% (very_sensitive) are given a floor of
+    `min(0.30 * m, max_sparsity)` so they also get pruned when the budget
+    forces it.
+
+    A deepcopy dry-run is used for each candidate `m` so the live model is
+    untouched.  Dry-runs are done on CPU regardless of training device.
+    """
+    import copy
+    try:
+        import torch_pruning as tp
+    except ImportError:
+        print("  [target-params] torch-pruning not available — skipping scaling.")
+        return layer_sparsity_map
+
+    layer_out_channels = {r["layer"]: r["out_channels"] for r in sensitivity_results}
+
+    def build_scaled_map(m: float) -> dict:
+        scaled = {}
+        for name, s in layer_sparsity_map.items():
+            if s == 0.0:
+                # Previously protected — allow pruning with a growing floor
+                scaled[name] = min(0.30 * m, max_sparsity)
+            else:
+                scaled[name] = min(s * m, max_sparsity)
+        return scaled
+
+    def dry_run_params(m: float) -> int:
+        scaled_map = build_scaled_map(m)
+        mc = copy.deepcopy(model).cpu().eval()
+        example_cpu = torch.randn(1, 3, 224, 224)
+        name_to_mod = {n: mod for n, mod in mc.named_modules()}
+        sd = {name_to_mod[n]: v for n, v in scaled_map.items() if n in name_to_mod}
+        try:
+            pruner = tp.pruner.MetaPruner(
+                mc, example_cpu,
+                importance=tp.importance.MagnitudeImportance(p=1),
+                iterative_steps=1,
+                ch_sparsity=0.0,
+                ch_sparsity_dict=sd,
+                ignored_layers=[mc.fc],
+            )
+            pruner.step()
+            n = sum(p.numel() for p in mc.parameters())
+        except Exception as e:
+            print(f"    [dry-run m={m:.2f}] error: {e}")
+            n = int(1e9)
+        del mc
+        return n
+
+    print(f"\n  Scaling sparsities to reach ≤{target_params:,} params ...")
+
+    # Quick check — is target already met at m=1?
+    n0 = dry_run_params(1.0)
+    print(f"    m=1.00 → {n0:,} params")
+    if n0 <= target_params:
+        print("    Already within target at m=1.00 — no scaling needed.")
+        return layer_sparsity_map
+
+    # Binary search m in [1.0, 25.0]
+    lo, hi, best_m = 1.0, 25.0, 25.0
+    for _ in range(12):
+        mid = (lo + hi) / 2
+        n = dry_run_params(mid)
+        print(f"    m={mid:.2f} → {n:,} params")
+        if n <= target_params:
+            best_m = mid
+            hi = mid
+        else:
+            lo = mid
+
+    print(f"  Selected m={best_m:.2f} (estimated params after scaling)")
+    return build_scaled_map(best_m)
+
+
 # ── Fine-tuning ───────────────────────────────────────────────────────────────
 
 def finetune(model, train_loader, val_loader, device, epochs,
-             save_best=True, label="finetune"):
+             save_best=True, label="finetune", ckpt_name="pruned.pt",
+             history_name="finetune_history.json",
+             initial_val_mae=None):
     optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=5
     )
     criterion        = nn.MSELoss()
     train_ds_len     = len(train_loader.dataset)
-    best_val_mae     = float("inf")
     patience_counter = 0
     history          = []
+
+    # Seed best_val_mae with the pre-fine-tune MAE (if provided) and save
+    # the current weights immediately — this ensures we never end up worse
+    # than the post-prune starting point even if the LR overshoots.
+    if initial_val_mae is not None and save_best:
+        best_val_mae = initial_val_mae
+        CKPT_DIR.mkdir(exist_ok=True)
+        torch.save(model, CKPT_DIR / ckpt_name)
+        print(f"  Pre-fine-tune checkpoint saved ({best_val_mae:.2f} µm)")
+    else:
+        best_val_mae = float("inf")
 
     for epoch in range(1, epochs + 1):
         model.train()
@@ -280,8 +381,8 @@ def finetune(model, train_loader, val_loader, device, epochs,
             best_val_mae = val_mae_val
             patience_counter = 0
             if save_best:
-                torch.save(model, CKPT_DIR / "pruned.pt")
-                print(f"    ✓ New best: {best_val_mae:.2f} µm  (saved pruned.pt)")
+                torch.save(model, CKPT_DIR / ckpt_name)
+                print(f"    ✓ New best: {best_val_mae:.2f} µm  (saved {ckpt_name})")
         else:
             patience_counter += 1
             if patience_counter >= EARLY_STOP_PATIENCE:
@@ -290,7 +391,7 @@ def finetune(model, train_loader, val_loader, device, epochs,
 
     if save_best:
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-        with open(RESULTS_DIR / "finetune_history.json", "w") as f:
+        with open(RESULTS_DIR / history_name, "w") as f:
             json.dump(history, f, indent=2)
 
     return best_val_mae
@@ -332,6 +433,12 @@ def run(args):
     iterative_steps  = args.iterative_steps if args.iterative_steps > 0 else (
         DEFAULT_ITERATIVE_STEPS if sparsity >= ITERATIVE_THRESHOLD else 1
     )
+    suffix = args.output_suffix
+    # Checkpoint / results filenames — suffix="" preserves legacy names
+    ckpt_name       = f"resnet_pruned{suffix}.pt" if suffix else "pruned.pt"
+    results_name    = f"pruning_results{suffix}.json"
+    history_name    = f"finetune_history{suffix}.json"
+    sensitivity_name = f"sensitivity_results{suffix}.json"
 
     print(f"Device                : {device}")
     print(f"Target sparsity       : {sparsity:.0%}")
@@ -385,6 +492,17 @@ def run(args):
             sensitive_t, very_sensitive_t, residual_penalty,
         )
 
+        # Optional: scale all sparsities up to hit a hard parameter budget
+        if args.target_params > 0:
+            layer_sparsity_map = scale_sparsity_map_to_target(
+                layer_sparsity_map, sensitivity_results,
+                args.target_params, model, device,
+            )
+            # Rebuild sensitivity_classified to reflect scaled values (for logging/JSON)
+            name_to_scaled = layer_sparsity_map
+            for r in sensitivity_classified:
+                r["assigned_sparsity"] = round(name_to_scaled.get(r["layer"], r["assigned_sparsity"]), 4)
+
         # Map names → modules for torch-pruning
         name_to_module = {n: m for n, m in model.named_modules()}
         for layer_name, ratio in layer_sparsity_map.items():
@@ -401,7 +519,7 @@ def run(args):
             )
 
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-        with open(RESULTS_DIR / "sensitivity_results.json", "w") as f:
+        with open(RESULTS_DIR / sensitivity_name, "w") as f:
             json.dump({
                 "target_sparsity":          sparsity,
                 "probe_sparsity":           sparsity,
@@ -470,6 +588,8 @@ def run(args):
     best_val_mae = finetune(
         model, train_loader, val_loader, device,
         epochs=finetune_epochs, save_best=True, label="final",
+        ckpt_name=ckpt_name, history_name=history_name,
+        initial_val_mae=val_mae_post_prune,
     )
 
     # ── Summary ───────────────────────────────────────────────────────────────
@@ -486,11 +606,12 @@ def run(args):
     print(f"\nVal MAE  : {val_mae_before:.2f} µm  →  {best_val_mae:.2f} µm")
     if macs_before and macs_after:
         print(f"FLOPs    : {flop_reduction:.1f}% reduction")
-    print(f"INT4 size: {pruned_stats['int4_kb']:.1f} KB  (target: ≤256 KB flash)")
-    if pruned_stats["int4_kb"] <= 256:
-        print("✓ INT4 size fits within 256 KB flash budget")
+    print(f"INT8 size: {pruned_stats['int8_kb']:.1f} KB  (target: ≤2048 KB flash — NXP FRDM-MCXN947)")
+    if pruned_stats["int8_kb"] <= 2048:
+        print("✓ INT8 size fits within 2 MB flash budget")
     else:
-        print(f"✗ Still {pruned_stats['int4_kb'] - 256:.1f} KB over budget — increase --sparsity")
+        print(f"✗ Still {pruned_stats['int8_kb'] - 2048:.1f} KB over INT8 budget  "
+              f"({pruned_stats['int4_kb']:.1f} KB projected INT4)")
     print("─" * 70)
 
     results = {
@@ -510,9 +631,9 @@ def run(args):
         "val_mae_after_finetune":  round(best_val_mae, 2),
     }
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    with open(RESULTS_DIR / "pruning_results.json", "w") as f:
+    with open(RESULTS_DIR / results_name, "w") as f:
         json.dump(results, f, indent=2)
-    print(f"\nResults saved to {RESULTS_DIR / 'pruning_results.json'}")
+    print(f"\nResults saved to {RESULTS_DIR / results_name}")
 
 
 if __name__ == "__main__":
@@ -522,9 +643,9 @@ if __name__ == "__main__":
     parser.add_argument("--finetune-epochs",  type=int,   default=DEFAULT_FINETUNE_EPOCHS,
                         help="Final fine-tune epochs after pruning (default: 30)")
     parser.add_argument("--iterative-steps",  type=int,   default=0,
-                        help="Number of iterative prune-and-fine-tune steps. "
-                             f"0 = auto ({DEFAULT_ITERATIVE_STEPS} when sparsity ≥ "
-                             f"{ITERATIVE_THRESHOLD:.0%}, else 1)")
+                        help=("Number of iterative prune-and-fine-tune steps. "
+                              f"0 = auto ({DEFAULT_ITERATIVE_STEPS} when sparsity >= "
+                              f"{int(ITERATIVE_THRESHOLD * 100)}%%, else 1)"))
     parser.add_argument("--sensitive-threshold",       type=float,
                         default=DEFAULT_SENSITIVE_THRESHOLD,
                         help="Relative MAE-increase threshold for 'sensitive' "
@@ -540,5 +661,15 @@ if __name__ == "__main__":
                              "(default: 0.5)")
     parser.add_argument("--skip-sensitivity", action="store_true",
                         help="Skip sensitivity analysis and use uniform sparsity")
+    parser.add_argument("--target-params", type=int, default=0,
+                        help="If set, binary-search a sparsity scale factor so the pruned "
+                             "model has at most this many parameters. Overrides per-layer "
+                             "sensitivity assignments by scaling them up proportionally. "
+                             "E.g. --target-params 2000000 targets ≤2M params (≤2048 KB INT8). "
+                             "0 = disabled (default).")
+    parser.add_argument("--output-suffix", type=str, default="",
+                        help="Suffix appended to checkpoint and results filenames "
+                             "(e.g. '_90' → resnet_pruned_90.pt, pruning_results_90.json). "
+                             "Empty string preserves legacy names (pruned.pt).")
     args = parser.parse_args()
     run(args)

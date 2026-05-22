@@ -1,0 +1,19 @@
+{
+  "sparsity": 0.95,
+  "iterative_steps": 4,
+  "sensitivity_analysis": true,
+  "sensitive_threshold": 0.2,
+  "very_sensitive_threshold": 1.0,
+  "residual_penalty": 0.5,
+  "finetune_epochs": 30,
+  "n_params": 1980200,
+  "fp32_kb": 7735.2,
+  "int8_kb": 1933.8,
+  "int4_kb": 966.9,
+  "macs_before": 1821665281,
+  "macs_after": 215320471,
+  "flop_reduction_pct": 88.18,
+  "val_mae_before_pruning": 37.49,
+  "val_mae_post_prune": 49.76,
+  "val_mae_after_finetune": 59.93
+}

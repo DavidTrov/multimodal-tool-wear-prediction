@@ -1,0 +1,36 @@
+{
+  "val": {
+    "n_samples": 300,
+    "pytorch_fp32_mae": 45.6987,
+    "tflite_int8_mae": 45.1777,
+    "mae_delta": 0.521,
+    "mae_delta_pass": true,
+    "mae_delta_threshold": 5.0,
+    "per_sample_diff": {
+      "mean_bias": -2.4306,
+      "std": 1.521,
+      "max_abs": 9.526,
+      "p95_abs": 4.9052,
+      "max_abs_pass": true
+    },
+    "correlation": 0.997704,
+    "overall_pass": true
+  },
+  "test": {
+    "n_samples": 247,
+    "pytorch_fp32_mae": 24.956,
+    "tflite_int8_mae": 24.7443,
+    "mae_delta": 0.2117,
+    "mae_delta_pass": true,
+    "mae_delta_threshold": 5.0,
+    "per_sample_diff": {
+      "mean_bias": -3.255,
+      "std": 1.8508,
+      "max_abs": 10.2948,
+      "p95_abs": 5.9986,
+      "max_abs_pass": true
+    },
+    "correlation": 0.998282,
+    "overall_pass": true
+  }
+}
