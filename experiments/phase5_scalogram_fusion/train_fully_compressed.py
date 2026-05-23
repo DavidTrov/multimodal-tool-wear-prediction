@@ -1,23 +1,20 @@
 """
-Phase 5 — fusion with compressed image encoder (2M-param budget ResNet).
+Phase 5 — fusion with BOTH compressed image encoder AND pruned sensor encoder.
 
-Identical to train.py except:
-  - Image encoder : pruned + distilled ResNet (1,980,200 params, 309-d features)
-                    loaded from checkpoints/resnet_distilled_budget.pt
-                    Standalone test MAE: 20.80 µm (FP32)
-  - image_feat_dim: 309  (vs 512 for standard ResNet18)
-  - Checkpoint   : checkpoints/phase5_compressed_fusion_best.pt
-
-The sensor encoder, fusion head architecture, and loss are identical to
-the best standard fusion (two-tower, 22.57 µm test MAE).  Optimiser is
-Adam (not SGDM) — the compressed encoder's different feature distribution
-(309-d, non-standard channel statistics) did not converge with SGDM
-(experiment 5c-i: val MAE 35.06 µm, worse than all baselines).
+  Image encoder  : pruned + distilled ResNet (1.98M params, 309-d features)
+                   loaded from checkpoints/resnet_distilled_budget.pt
+  Sensor encoder : pruned + distilled MultiScaleSensorCNN
+                   loaded from checkpoints/sensor_distilled.pt  (full object)
+                   extract_features() output stays at 96-d (head protected in pruning)
+  Fusion head    : same two-tower architecture as Phase 5 v4 (22.57 µm)
+  Optimizer      : Adam (lr=5e-4) — same as 5c-ii
 
 Usage
 -----
-    python experiments/phase5_scalogram_fusion/train_compressed.py
-    python experiments/phase5_scalogram_fusion/train_compressed.py --resume
+    python experiments/phase5_scalogram_fusion/train_fully_compressed.py
+    python experiments/phase5_scalogram_fusion/train_fully_compressed.py --resume
+    python experiments/phase5_scalogram_fusion/train_fully_compressed.py \\
+        --sensor-ckpt checkpoints/sensor_distilled_50.pt
 
 Run from the thesis root.
 """
@@ -38,30 +35,28 @@ from src.data.fusion_scalogram_dataset import MATWIFusionScalogramDataset
 from src.models.multiscale_fusion_model import MultiScaleFusionModel
 from src.utils.metrics import mae
 
-# ── Config ────────────────────────────────────────────────────────────────────
-DATA_ROOT       = ROOT / "data" / "raw"
-SCALOGRAM_DIR   = ROOT / "data" / "processed" / "scalograms"
-FEATURES_PATH   = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR        = ROOT / "checkpoints"
-RESULTS_DIR     = Path(__file__).parent / "results_compressed"
+# ── Config ─────────────────────────────────────────────────────────────────────
+DATA_ROOT     = ROOT / "data" / "raw"
+SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
+FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
+CKPT_DIR      = ROOT / "checkpoints"
+RESULTS_DIR   = Path(__file__).parent / "results_fully_compressed"
 
-COMPRESSED_CKPT = CKPT_DIR / "resnet_distilled_budget.pt"
-PHASE4_CKPT     = CKPT_DIR / "best" / "phase4_multiscale_sgdm_best_25.pt"
-CKPT_PATH       = CKPT_DIR / "phase5_compressed_fusion_best.pt"
+COMPRESSED_IMG_CKPT = CKPT_DIR / "resnet_distilled_budget.pt"
+DEFAULT_SENSOR_CKPT = CKPT_DIR / "sensor_distilled.pt"
+CKPT_PATH           = CKPT_DIR / "phase5_fully_compressed_best.pt"
 
-# Compressed ResNet avgpool output dimensionality (verified empirically)
-IMAGE_FEAT_DIM = 309
-
-LR           = 1e-3
-WEIGHT_DECAY = 5e-3
-BATCH_SIZE   = 16
-EPOCHS       = 40
-AUX_LAMBDA   = 0.2
-NUM_WORKERS  = 0
-# ─────────────────────────────────────────────────────────────────────────────
+IMAGE_FEAT_DIM = 309   # compressed ResNet avgpool output
+AUX_LAMBDA     = 0.2
+LR             = 5e-4
+WEIGHT_DECAY   = 5e-3
+BATCH_SIZE     = 16
+EPOCHS         = 40
+NUM_WORKERS    = 0
+# ───────────────────────────────────────────────────────────────────────────────
 
 
-def run(resume: bool = False):
+def run(resume: bool = False, sensor_ckpt: str = None):
     device = (
         "cuda" if torch.cuda.is_available()
         else "mps" if torch.backends.mps.is_available()
@@ -69,7 +64,8 @@ def run(resume: bool = False):
     )
     print(f"Device : {device}\n")
 
-    for p in (COMPRESSED_CKPT, PHASE4_CKPT):
+    sensor_ckpt_path = Path(sensor_ckpt) if sensor_ckpt else DEFAULT_SENSOR_CKPT
+    for p in (COMPRESSED_IMG_CKPT, sensor_ckpt_path):
         if not p.exists():
             sys.exit(f"Required checkpoint not found: {p}")
 
@@ -87,23 +83,30 @@ def run(resume: bool = False):
 
     # ── Model ─────────────────────────────────────────────────────────────────
     model = MultiScaleFusionModel(image_feat_dim=IMAGE_FEAT_DIM)
-    model.load_compressed_image_encoder(COMPRESSED_CKPT, device=device)
-    model.load_phase4_weights(PHASE4_CKPT, device=device)
+    model.load_compressed_image_encoder(COMPRESSED_IMG_CKPT, device=device)
+    model.load_pruned_sensor_encoder(sensor_ckpt_path, device=device)
     model.freeze_image_encoder()
     model.freeze_sensor_encoder()
     model = model.to(device)
 
-    n_frozen    = sum(p.numel() for p in model.parameters() if not p.requires_grad)
-    n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Frozen params    : {n_frozen:,}  (compressed image encoder + sensor encoder)")
-    print(f"Trainable params : {n_trainable:,}  (fusion head + aux head + LayerNorms)")
-    print(f"Image feat dim   : {IMAGE_FEAT_DIM}  (compressed, vs 512 standard)\n")
+    n_img     = sum(p.numel() for p in model.image_encoder.parameters())
+    n_sen     = sum(p.numel() for p in model.sensor_cnn.parameters())
+    n_frozen  = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+    n_train   = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    n_total   = sum(p.numel() for p in model.parameters())
+
+    print(f"\nTotal params     : {n_total:,}")
+    print(f"  Image encoder  : {n_img:,}  (compressed ResNet, 309-d)  [frozen]")
+    print(f"  Sensor encoder : {n_sen:,}  (pruned MultiScaleSensorCNN, 96-d)  [frozen]")
+    print(f"  Fusion head    : {n_train:,}  [trainable]")
+    print(f"\nSensor checkpoint : {sensor_ckpt_path.name}")
+    total_int8_kb = (n_img + n_sen + n_train) / 1024
+    print(f"Projected INT8 size: {total_int8_kb:.0f} KB  ({total_int8_kb/1024:.2f} MB)\n")
 
     # ── Optimisation ──────────────────────────────────────────────────────────
     optimizer = torch.optim.Adam(
         filter(lambda p: p.requires_grad, model.parameters()),
-        lr=LR,
-        weight_decay=WEIGHT_DECAY,
+        lr=LR, weight_decay=WEIGHT_DECAY,
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=EPOCHS, eta_min=1e-5
@@ -116,6 +119,7 @@ def run(resume: bool = False):
     history      = []
 
     if resume and CKPT_PATH.exists():
+        # Reload architecture before loading state dict
         model.load_state_dict(torch.load(CKPT_PATH, map_location=device, weights_only=True))
         if history_path.exists():
             with open(history_path) as f:
@@ -126,7 +130,6 @@ def run(resume: bool = False):
 
     # ── Training loop ─────────────────────────────────────────────────────────
     for epoch in range(start_epoch, start_epoch + EPOCHS):
-
         model.train()
         train_loss = 0.0
         for images, scalograms, targets in train_loader:
@@ -140,7 +143,6 @@ def run(resume: bool = False):
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-
             train_loss += loss.item() * len(images)
 
         train_loss /= len(train_ds)
@@ -150,12 +152,9 @@ def run(resume: bool = False):
         all_preds, all_targets = [], []
         with torch.no_grad():
             for images, scalograms, targets in val_loader:
-                images     = images.to(device)
-                scalograms = scalograms.to(device)
-                targets    = targets.to(device)
-                preds      = model(images, scalograms)[0].squeeze(1)
+                preds = model(images.to(device), scalograms.to(device))[0].squeeze(1)
                 all_preds.append(preds)
-                all_targets.append(targets)
+                all_targets.append(targets.to(device))
 
         all_preds   = torch.cat(all_preds)
         all_targets = torch.cat(all_targets)
@@ -193,6 +192,9 @@ def run(resume: bool = False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--resume",       action="store_true")
+    parser.add_argument("--sensor-ckpt",  default=None,
+                        help="Path to pruned/distilled sensor checkpoint "
+                             "(default: checkpoints/sensor_distilled.pt)")
     args = parser.parse_args()
-    run(resume=args.resume)
+    run(resume=args.resume, sensor_ckpt=args.sensor_ckpt)
