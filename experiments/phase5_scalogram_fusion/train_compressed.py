@@ -52,7 +52,7 @@ CKPT_PATH       = CKPT_DIR / "phase5_compressed_fusion_best.pt"
 # Compressed ResNet avgpool output dimensionality (verified empirically)
 IMAGE_FEAT_DIM = 309
 
-LR           = 3e-3
+LR           = 5e-4
 WEIGHT_DECAY = 5e-3
 BATCH_SIZE   = 16
 EPOCHS       = 40

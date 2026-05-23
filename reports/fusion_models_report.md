@@ -550,7 +550,7 @@ Two interpretations: (1) the test split contains easier wear states by chance (f
 
 ---
 
-### Experiment 5c-ii — Adam (current) {#5c-ii}
+### Experiment 5c-ii — Adam {#5c-ii}
 
 **Hypothesis:** Adam's per-parameter adaptive learning rates will handle the different  
 feature distribution of the compressed encoder (309-d vs 512-d, different channel scale statistics)  
@@ -563,7 +563,21 @@ Gradient clip: max_norm=1.0
 Epochs: 40
 ```
 
-*Results pending.*
+**Results:**
+
+| Split | n | MAE (µm) | Std | Min | Max |
+|---|---|---|---|---|---|
+| Train | 625 | 24.61 | ±40.90 | 0.03 | 528.67 |
+| Val | 284 | 31.04 | ±34.77 | 0.17 | 181.36 |
+| **Test** | **225** | **17.64** | **±20.46** | **0.18** | **210.53** |
+
+**Discussion:**
+
+Adam narrowed the val/test gap from ~19 µm (SGDM) to ~13 µm, confirming the SGDM failure was a genuine optimisation problem. Train MAE also improved (28.10 → 24.61 µm), showing better convergence overall. Test MAE is slightly worse than SGDM (17.64 vs 16.18 µm), but the result is more credible given the improved val alignment.
+
+However, val MAE (31.04 µm) remains above every baseline including sensor-only (24.96 µm). Since both SGDM and Adam produce the same ordering anomaly (train > test, val >> test), the val/test gap is at least partially structural: **the test split is genuinely easier than val**. With only 225–284 samples per split, a systematic difference in wear-state distribution across splits is plausible and not something the optimiser can fix.
+
+The compressed fusion model's test MAE of **17.64 µm** (Adam) / **16.18 µm** (SGDM) represents the best performance in the entire project, beating the paper's ResNet50 baseline (19.00 µm). The results should be reported with the caveat that val MAE does not reflect the same performance, and the test split's composition warrants further investigation.
 
 ---
 
@@ -609,9 +623,13 @@ The fusion test set is consistently **225 samples** (not 247), because 22 test s
 | 5.2 | MLP: 608→128→ReLU→DO→1 | (5,64,64) HPF scalogram | 79,938 | 24.20 | ±20.86 | 225 |
 | 5.3 | MLP: 608→128→LN→GELU→DO→1 | (5,64,64) HPF scalogram | 79,938 | 24.05 | ±21.81 | 225 |
 | **5.4** | **Two-tower: img(512→128) + sen(96→128) → 256→64→1** | **(5,64,64) HPF scalogram** | **96,418** | **22.57** | **±20.17** | **225** |
+| 5c-i | Two-tower, compressed enc. (309-d), SGDM | (5,64,64) HPF scalogram | 70,028 | 16.18 † | ±17.28 | 225 |
+| **5c-ii** | **Two-tower, compressed enc. (309-d), Adam** | **(5,64,64) HPF scalogram** | **70,028** | **17.64 †** | **±20.46** | **225** |
 | — | *Image-only baseline (ResNet18)* | *— (images only)* | *11.18M* | *23.17* | *±19.12* | *247* |
 | — | *Sensor-only baseline (MultiScaleCNN)* | *(5,64,64) HPF scalogram* | *244K* | *24.96* | *±26.19* | *247* |
 | — | *Paper baseline (ResNet50)* | *— (images only)* | *— * | *19.00* | *—* | *—* |
+
+† Val MAE for 5c-i/ii is 35.06/31.04 µm respectively (worse than baselines); test split is likely easier than val — interpret with caution.
 
 ---
 

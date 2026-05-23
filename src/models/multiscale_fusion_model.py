@@ -108,6 +108,24 @@ class MultiScaleFusionModel(nn.Module):
             torch.load(ckpt_path, map_location=device, weights_only=True)
         )
 
+    def load_pruned_sensor_encoder(self, ckpt_path, device: str = "cpu"):
+        """Load a pruned/distilled sensor CNN saved as a full model object.
+
+        Pruned models have non-standard channel counts and are saved with
+        torch.save(model, path) rather than torch.save(model.state_dict(), path).
+        This method loads the full object and installs it as self.sensor_cnn.
+
+        The pruned model's extract_features() output is kept at 96-d by protecting
+        model.head[1] during pruning, so sensor_norm and sen_proj need no changes.
+        """
+        obj = torch.load(ckpt_path, map_location=device, weights_only=False)
+        if isinstance(obj, dict):
+            raise ValueError(
+                f"{ckpt_path} contains a state_dict, not a full model object. "
+                "Pruned sensor models must be saved with torch.save(model, path)."
+            )
+        self.sensor_cnn = obj.to(device)
+
     def load_compressed_image_encoder(self, ckpt_path, device: str = "cpu"):
         """Load a pruned/compressed ResNet saved as a full model object.
 
