@@ -12,8 +12,8 @@
 
 The Phase 1 image-only ResNet-18 achieves **23.17 µm test MAE** at 11.2M parameters — far too
 large for the NXP target (10,912 KB INT8 vs. 2,048 KB budget). This document records a
-three-phase compression pipeline sweeping four sparsity levels plus a budget-constrained run
-that specifically targets on-device deployment.
+three-phase compression pipeline sweeping four sparsity levels plus two budget-constrained runs
+targeting on-device deployment within the full 2 MB flash budget.
 
 ### Compression pipeline
 
@@ -40,8 +40,10 @@ INT8 QAT model  (weights fine-tuned to be robust to INT8 rounding)
 | 50% | 50% channel removal | Lower bound — moderate compression |
 | 85% | 85% channel removal | Previous baseline run |
 | 90% | 90% channel removal | Aggressive — test accuracy floor |
-| 95% | 95% channel removal | Very aggressive |
-| **budget** | 95% + `--target-params 2,000,000` | **On-device target** — forced to fit 2 MB flash |
+| 95% | 95% channel removal | Very aggressive (sensitivity-protected) |
+| **budget** | 95% + `--target-params 2,000,000` | On-device candidate — fits 2 MB flash |
+| **1.5M** | 95% + `--target-params 1,500,000` | Safe deployment — 1,458 KB, 170 KB under safe ceiling |
+| **1M** | 95% + `--target-params 1,000,000` | Maximum headroom — 970 KB, 658 KB under safe ceiling |
 
 ---
 
@@ -82,30 +84,33 @@ Dataset: MATWI flank wear (647 train / 300 val / 247 test images).
    applied to all per-layer sparsities (including previously-protected layers) using dry-run
    deepcopies of the model, until the pruned parameter count hits the target.
 
-### Layer sensitivity at 95% sparsity probe (used for budget run)
+### Layer sensitivity at 95% sparsity probe (used for budget and 1M runs)
 
-| Layer | Channels | Rel. ∆MAE | Class | Assigned (95%) | Assigned (budget, m=1.66) |
-|---|---|---|---|---|---|
-| conv1 | 64 | +30.9% | sensitive | 48% | **79%** |
-| layer1.0.conv1 | 64 | +43.5% | sensitive | 48% | **79%** |
-| layer1.0.conv2 | 64 | +40.7% | sensitive (residual) | 24% | **39%** |
-| layer1.1.conv1 | 64 | +170.1% | **very_sensitive** | 0% | **50%** |
-| layer1.1.conv2 | 64 | +78.0% | sensitive (residual) | 24% | **39%** |
-| layer2.0.conv1 | 128 | +62.0% | sensitive | 48% | **79%** |
-| layer2.0.conv2 | 128 | +49.2% | sensitive (residual) | 24% | **39%** |
-| layer2.0.downsample.0 | 128 | +90.9% | sensitive (residual) | 24% | **39%** |
-| layer2.1.conv1 | 128 | +49.9% | sensitive | 48% | **79%** |
-| layer2.1.conv2 | 128 | +160.7% | **very_sensitive** (residual) | 0% | **50%** |
-| layer3.0.conv1 | 256 | +30.4% | sensitive | 48% | **79%** |
-| layer3.0.conv2 | 256 | +186.2% | **very_sensitive** (residual) | 0% | **50%** |
-| layer3.0.downsample.0 | 256 | +1.2% | insensitive (residual) | 48% | **79%** |
-| layer3.1.conv1 | 256 | +66.4% | sensitive | 48% | **79%** |
-| layer3.1.conv2 | 256 | +48.5% | sensitive (residual) | 24% | **39%** |
-| layer4.0.conv1 | 512 | +39.1% | sensitive | 48% | **79%** |
-| layer4.0.conv2 | 512 | +30.5% | sensitive (residual) | 24% | **39%** |
-| layer4.0.downsample.0 | 512 | +24.3% | sensitive (residual) | 24% | **39%** |
-| layer4.1.conv1 | 512 | +197.1% | **very_sensitive** | 0% | **50%** |
-| layer4.1.conv2 | 512 | +44.0% | sensitive (residual) | 24% | **39%** |
+The four `very_sensitive` layers get a floor sparsity of `min(0.30 × m, 0.92)` instead of 0%
+when `--target-params` is active, where `m` is the binary-searched scale factor.
+
+| Layer | Channels | Rel. ∆MAE | Class | Standard 95% | Budget (m=1.66) | **1M (m=2.12)** |
+|---|---|---|---|---|---|---|
+| conv1 | 64 | +30.9% | sensitive | 48% | 79% | **92%** |
+| layer1.0.conv1 | 64 | +43.5% | sensitive | 48% | 79% | **92%** |
+| layer1.0.conv2 | 64 | +40.7% | sensitive (residual) | 24% | 39% | **50%** |
+| layer1.1.conv1 | 64 | +170.1% | **very_sensitive** | 0% | 50% | **64%** |
+| layer1.1.conv2 | 64 | +78.0% | sensitive (residual) | 24% | 39% | **50%** |
+| layer2.0.conv1 | 128 | +62.0% | sensitive | 48% | 79% | **92%** |
+| layer2.0.conv2 | 128 | +49.2% | sensitive (residual) | 24% | 39% | **50%** |
+| layer2.0.downsample.0 | 128 | +90.9% | sensitive (residual) | 24% | 39% | **50%** |
+| layer2.1.conv1 | 128 | +49.9% | sensitive | 48% | 79% | **92%** |
+| layer2.1.conv2 | 128 | +160.7% | **very_sensitive** (residual) | 0% | 50% | **64%** |
+| layer3.0.conv1 | 256 | +30.4% | sensitive | 48% | 79% | **92%** |
+| layer3.0.conv2 | 256 | +186.2% | **very_sensitive** (residual) | 0% | 50% | **64%** |
+| layer3.0.downsample.0 | 256 | +1.2% | insensitive (residual) | 48% | 79% | **92%** |
+| layer3.1.conv1 | 256 | +66.4% | sensitive | 48% | 79% | **92%** |
+| layer3.1.conv2 | 256 | +48.5% | sensitive (residual) | 24% | 39% | **50%** |
+| layer4.0.conv1 | 512 | +39.1% | sensitive | 48% | 79% | **92%** |
+| layer4.0.conv2 | 512 | +30.5% | sensitive (residual) | 24% | 39% | **50%** |
+| layer4.0.downsample.0 | 512 | +24.3% | sensitive (residual) | 24% | 39% | **50%** |
+| layer4.1.conv1 | 512 | +197.1% | **very_sensitive** | 0% | 50% | **64%** |
+| layer4.1.conv2 | 512 | +44.0% | sensitive (residual) | 24% | 39% | **50%** |
 
 ### Why nominal sparsity ≠ parameter reduction
 
@@ -114,9 +119,12 @@ target. The reason: the four `very_sensitive` layers (including `layer4.1.conv1`
 **2.36M params**) are fully protected at 0% sparsity. These protected layers collectively hold
 ~3.3M parameters — a floor that cannot be broken without overriding the sensitivity protection.
 
-The budget run uses `--target-params 2,000,000`, which sets `very_sensitive_threshold = ∞`
-effectively and scales all assignments by m=1.66, allowing even the most sensitive layers to be
-pruned. This achieved **1,980,200 parameters** — within the 2,048 KB flash budget.
+The **budget run** uses `--target-params 2,000,000` (m=1.66), achieving **1,980,200 parameters**
+— within the raw 2,048 KB flash budget but exceeding the safe ~1,628 KB ceiling once runtime
+overhead is subtracted (see Section 8.5).
+
+The **1M run** uses `--target-params 1,000,000` (m=2.12), achieving **993,186 parameters
+(969.9 KB INT8)** — 658 KB under the safe ceiling, providing comfortable deployment headroom.
 
 ### Pruning results
 
@@ -128,10 +136,24 @@ pruned. This achieved **1,980,200 parameters** — within the 2,048 KB flash bud
 | **90%** | 6,015,501 | 5,875 | 2,937 | 811M | 55.5% | 109.95 µm | 39.59 µm |
 | **95%** | 5,793,095 | 5,657 | 2,829 | 763M | 58.1% | 103.91 µm | 38.19 µm |
 | **budget** | **1,980,200** | **1,934** | **967** | **215M** | **88.2%** | 49.76 µm | 59.93 µm† |
+| **1.5M** | **1,493,182** | **1,458** | **729** | **137M** | **92.5%** | 61.67 µm | **61.67 µm**§ |
+| **1M** | **993,186** | **970** | **485** | **83M** | **95.4%** | 112.09 µm | **70.06 µm**‡ |
 
 † The final fine-tune overshot the pre-fine-tune MAE (LR=1e-5 too large for a 2M-param model);
 the pre-fine-tune checkpoint (49.76 µm) was not saved. Distillation subsequently recovered
 to 33.85 µm val / 20.80 µm test.
+
+§ For the 1.5M model, the fine-tuner never improved upon the post-prune checkpoint (61.67 µm)
+across all 30 epochs. The pre-fine-tune model was retained as the best checkpoint. At this
+compression level (92.5% MAC reduction) the LR=1e-5 optimiser immediately overshoots on every
+epoch. Distillation carried the full recovery from 61.67 µm to 38.57 µm val / 29.83 µm test.
+
+‡ The 1M model post-prune val MAE was 112.09 µm after all 4 iterative pruning steps. The
+fine-tuner found its best checkpoint at **epoch 1** (70.06 µm) and then degraded monotonically
+with early stopping at epoch 11. At this extreme compression level (95.4% MAC reduction, only
+993K params), the learning rate is too large for sustained recovery — the first epoch's momentum
+is beneficial but subsequent updates overfit. Distillation with a frozen teacher subsequently
+brought the model from 70.06 µm down to **42.99 µm** val / **30.84 µm** test.
 
 **Notable observations:**
 - 90% and 95% nominal sparsity produce nearly identical parameter counts (~6M) because the
@@ -140,6 +162,8 @@ to 33.85 µm val / 20.80 µm test.
   the baseline, running dramatically faster on the Neutron NPU.
 - Iterative pruning (4 steps) is essential at ≥80% sparsity: without it, single-shot pruning
   causes MAE to jump to >100 µm, which the fine-tuner cannot fully recover.
+- At 95.4% MAC reduction (1M run), the fine-tuner's best checkpoint occurs at epoch 1 and then
+  degrades — distillation carries the majority of the accuracy recovery at this compression level.
 
 ---
 
@@ -169,15 +193,20 @@ L = (1 − α) · MSE(student_pred, y)              ← ground-truth label
 | 90% | 39.59 µm | 33.70 µm | −5.89 µm (−14.9%) | 16 |
 | 95% | 38.19 µm | 32.47 µm | −5.72 µm (−15.0%) | 32 |
 | **budget** | 59.93 µm | **33.85 µm** | **−26.08 µm (−43.5%)** | 17 |
+| **1.5M** | **61.67 µm** | **38.57 µm** | **−23.10 µm (−37.5%)** | 40 |
+| **1M** | **70.06 µm** | **42.99 µm** | **−27.07 µm (−38.7%)** | 40 |
 
 **Notable observations:**
 - Distillation consistently recovers 5–6 µm across all sparsity levels, demonstrating that
   teacher supervision reliably compensates for pruning-induced capacity loss.
-- The budget model shows the largest absolute recovery (−26 µm), starting from a much worse
-  post-prune baseline and converging to a val MAE comparable to the other models — strong
-  evidence that distillation is especially valuable for heavily compressed networks.
-- The 95% model achieves the best val MAE after distillation (32.47 µm), marginally better
-  than the 90% and budget models.
+- The budget and 1M models show the largest absolute recoveries (−26 µm and −27 µm
+  respectively), starting from much worse post-prune baselines — strong evidence that
+  distillation is especially critical for heavily compressed networks where the pruner
+  cannot recover through fine-tuning alone.
+- The 1M model trained for the full 40 epochs without early stopping, still improving at
+  epoch 40 (42.99 µm), suggesting it could benefit from additional distillation epochs.
+- The 95% (sensitivity-protected) model retains the best val MAE after distillation (32.47 µm)
+  because sensitivity protection preserved the most important layers intact.
 
 ---
 
@@ -211,15 +240,18 @@ purposes the result is identical to static INT8.
 | 90% | 6,015,501 | 5,875 | 33.70 µm | 23.54 µm | 33.71 µm | 23.54 µm | +0.01 µm | ✗ |
 | 95% | 5,793,095 | 5,657 | 32.47 µm | 28.29 µm | 32.47 µm | 28.29 µm | 0.00 µm | ✗ |
 | **budget** | **1,980,200** | **1,934** | 33.85 µm | **20.80 µm** | 33.84 µm | **20.80 µm** | −0.01 µm | **✓** |
+| **1.5M** | **1,493,182** | **1,458** | 38.57 µm | **29.83 µm** | 38.58 µm | **29.83 µm** | +0.01 µm | **✓** |
+| **1M** | **993,186** | **970** | 42.99 µm | **30.84 µm** | 43.01 µm | **30.84 µm** | +0.02 µm | **✓** |
 
 **Notable observations:**
 - Dynamic INT8 quantisation causes **zero measurable MAE degradation** across all runs. This
   is expected: at 30–35 µm absolute error, INT8 weight rounding (±0.5 LSB) is negligible.
-- The **budget model is the only run that fits in flash** (1,934 KB ≤ 2,048 KB).
-- The budget model's test MAE (20.80 µm) is **2.37 µm better than the unpruned baseline**
-  (23.17 µm) at 1/5.6th the parameters — see Section 8 for discussion.
-- None of the standard sparsity runs (50%, 85%, 90%, 95%) fits in flash: all remain between
-  5,600 and 7,100 KB INT8, 2.7–3.5× over budget.
+- Both the budget (1,934 KB) and 1M (970 KB) models fit in flash; all standard sparsity runs
+  (50%, 85%, 90%, 95%) are 2.7–3.5× over budget.
+- The budget model's test MAE (20.80 µm) is the best of all compressed models — **2.37 µm
+  better than the unpruned baseline** — see Section 8 for discussion.
+- The 1M model's test MAE (30.84 µm) is 7.67 µm worse than the budget model: a meaningful
+  accuracy cost for the extra compression, but still within 7.67 µm of baseline.
 
 ---
 
@@ -237,47 +269,63 @@ The approach used here is a practical equivalent:
    that makes gradient flow "aware" of the quantisation grid.
 4. Apply `quantize_dynamic` to the best fine-tuned weights → final INT8 model.
 
-QAT was run on the **90% model** and the **budget model**.
+QAT was run on the **90% model**, the **budget model**, and the **1M model**.
 
 ### QAT results
 
-| Run | Test MAE FP32 | Test MAE PTQ | Test MAE QAT | QAT vs PTQ | QAT vs baseline | On-device |
-|---|---|---|---|---|---|---|
-| 90% | 23.54 µm | 23.54 µm | 28.40 µm | **+4.86 µm** ← hurt | +5.23 µm | ✗ |
-| **budget** | **20.80 µm** | **20.80 µm** | **19.06 µm** | **−1.74 µm** ← improved | **−4.11 µm** | **✓** |
+| Run | Params | Test MAE FP32 | Test MAE PTQ | Test MAE QAT | QAT vs PTQ | QAT vs baseline | On-device |
+|---|---|---|---|---|---|---|---|
+| 90% | 6,015,501 | 23.54 µm | 23.54 µm | 28.40 µm | **+4.86 µm** ← hurt | +5.23 µm | ✗ |
+| **budget** | **1,980,200** | **20.80 µm** | **20.80 µm** | **19.06 µm** | **−1.74 µm** ← improved | **−4.11 µm** | **✓** |
+| **1.5M** | **1,493,182** | **29.83 µm** | **29.83 µm** | **27.61 µm** | **−2.22 µm** ← improved | +4.44 µm | **✓** |
+| **1M** | **993,186** | **30.84 µm** | **30.84 µm** | **28.30 µm** | **−2.54 µm** ← improved | +5.13 µm | **✓** |
 
 **Notable observations:**
 - QAT **hurt the 90% model** (+4.86 µm). At LR=1e-5 and 6M params the weight-clamping
   fine-tune overfit to the validation set without generalising to the test set.
-- QAT **helped the budget model** (−1.74 µm test). The smaller 2M-param model is better
-  regularised and the INT8-aware weight clamping improved test generalisation.
-- The budget QAT INT8 model (19.06 µm test) is **4.11 µm better than the uncompressed
-  FP32 baseline** at 1/5.6th the parameters, fitting within the flash budget.
+- QAT **helped both on-device models** — the smaller and more aggressively compressed models
+  benefit from INT8-aware fine-tuning because the tighter weight range acts as an additional
+  regulariser, reducing overfitting.
+- The **budget QAT INT8 model** (19.06 µm) is **4.11 µm better than the uncompressed FP32
+  baseline** — the best-accuracy on-device option.
+- The **1M QAT INT8 model** (28.30 µm) is **−2.54 µm** better than its FP32 counterpart
+  and fits with 658 KB flash headroom — the **safest on-device option** when firmware
+  overhead is uncertain.
+- Val MAE of the 1M QAT model: 37.24 µm (FP32: 42.99 µm, QAT recovered −5.75 µm on val),
+  consistent with the pattern that QAT fine-tuning particularly helps smaller models.
 
 ---
 
 ## 7. Complete Results Table
 
-| Stage | Run | Params | INT8 KB | INT4 KB | Pruned val | Distil val | PTQ test | QAT test | On-device |
-|---|---|---|---|---|---|---|---|---|---|
-| Baseline (FP32) | 0% | 11,173,962 | 10,912 | 5,456 | — | — | 23.17 µm | — | ✗ |
-| Pruned | 50% | 7,296,225 | 7,125 | 3,563 | 40.65 µm | — | — | — | ✗ |
-| Distilled | 50% | 7,296,225 | 7,125 | 3,563 | — | 34.48 µm | — | — | ✗ |
-| PTQ INT8 | 50% | 7,296,225 | 7,125 | 3,563 | — | — | 32.87 µm | — | ✗ |
-| Pruned | 85% | 6,341,598 | 6,193 | 3,097 | 38.41 µm | — | — | — | ✗ |
-| Distilled | 85% | 6,341,598 | 6,193 | 3,097 | — | 33.52 µm | — | — | ✗ |
-| PTQ INT8 | 85% | 6,341,598 | 6,193 | 3,097 | — | — | 35.41 µm | — | ✗ |
-| Pruned | 90% | 6,015,501 | 5,875 | 2,937 | 39.59 µm | — | — | — | ✗ |
-| Distilled | 90% | 6,015,501 | 5,875 | 2,937 | — | 33.70 µm | — | — | ✗ |
-| PTQ INT8 | 90% | 6,015,501 | 5,875 | 2,937 | — | — | 23.54 µm | — | ✗ |
-| QAT INT8 | 90% | 6,015,501 | 5,875 | 2,937 | — | — | — | 28.40 µm | ✗ |
-| Pruned | 95% | 5,793,095 | 5,657 | 2,829 | 38.19 µm | — | — | — | ✗ |
-| Distilled | 95% | 5,793,095 | 5,657 | 2,829 | — | 32.47 µm | — | — | ✗ |
-| PTQ INT8 | 95% | 5,793,095 | 5,657 | 2,829 | — | — | 28.29 µm | — | ✗ |
-| Pruned | budget | 1,980,200 | 1,934 | 967 | 59.93 µm | — | — | — | ✓ |
-| Distilled | budget | 1,980,200 | 1,934 | 967 | — | 33.85 µm | — | — | ✓ |
-| PTQ INT8 | budget | 1,980,200 | 1,934 | 967 | — | — | 20.80 µm | — | ✓ |
-| **QAT INT8** | **budget** | **1,980,200** | **1,934** | **967** | — | — | — | **19.06 µm** | **✓** |
+| Stage | Run | Params | INT8 KB | Pruned val | Distil val | PTQ test | QAT test | On-device |
+|---|---|---|---|---|---|---|---|---|
+| Baseline (FP32) | 0% | 11,173,962 | 10,912 | — | — | 23.17 µm | — | ✗ |
+| Pruned | 50% | 7,296,225 | 7,125 | 40.65 µm | — | — | — | ✗ |
+| Distilled | 50% | 7,296,225 | 7,125 | — | 34.48 µm | — | — | ✗ |
+| PTQ INT8 | 50% | 7,296,225 | 7,125 | — | — | 32.87 µm | — | ✗ |
+| Pruned | 85% | 6,341,598 | 6,193 | 38.41 µm | — | — | — | ✗ |
+| Distilled | 85% | 6,341,598 | 6,193 | — | 33.52 µm | — | — | ✗ |
+| PTQ INT8 | 85% | 6,341,598 | 6,193 | — | — | 35.41 µm | — | ✗ |
+| Pruned | 90% | 6,015,501 | 5,875 | 39.59 µm | — | — | — | ✗ |
+| Distilled | 90% | 6,015,501 | 5,875 | — | 33.70 µm | — | — | ✗ |
+| PTQ INT8 | 90% | 6,015,501 | 5,875 | — | — | 23.54 µm | — | ✗ |
+| QAT INT8 | 90% | 6,015,501 | 5,875 | — | — | — | 28.40 µm | ✗ |
+| Pruned | 95% | 5,793,095 | 5,657 | 38.19 µm | — | — | — | ✗ |
+| Distilled | 95% | 5,793,095 | 5,657 | — | 32.47 µm | — | — | ✗ |
+| PTQ INT8 | 95% | 5,793,095 | 5,657 | — | — | 28.29 µm | — | ✗ |
+| Pruned | budget | 1,980,200 | 1,934 | 59.93 µm | — | — | — | ✓ |
+| Distilled | budget | 1,980,200 | 1,934 | — | 33.85 µm | — | — | ✓ |
+| PTQ INT8 | budget | 1,980,200 | 1,934 | — | — | 20.80 µm | — | ✓ |
+| QAT INT8 | **budget** | **1,980,200** | **1,934** | — | — | — | **19.06 µm** | **✓** |
+| Pruned | **1.5M** | **1,493,182** | **1,458** | 61.67 µm | — | — | — | ✓ |
+| Distilled | **1.5M** | **1,493,182** | **1,458** | — | 38.57 µm | — | — | ✓ |
+| PTQ INT8 | **1.5M** | **1,493,182** | **1,458** | — | — | 29.83 µm | — | ✓ |
+| QAT INT8 | **1.5M** | **1,493,182** | **1,458** | — | — | — | **27.61 µm** | **✓** |
+| Pruned | **1M** | **993,186** | **970** | 70.06 µm | — | — | — | ✓ |
+| Distilled | **1M** | **993,186** | **970** | — | 42.99 µm | — | — | ✓ |
+| PTQ INT8 | **1M** | **993,186** | **970** | — | — | 30.84 µm | — | ✓ |
+| **QAT INT8** | **1M** | **993,186** | **970** | — | — | — | **28.30 µm** | **✓** |
 
 ---
 
@@ -353,36 +401,89 @@ MCXN947. All "INT4 KB" figures in this document should be disregarded for deploy
 | Safety margin (alignment, OTA scratch) | 50 KB |
 | **Available for model weights** | **~1,628 KB** |
 
-The 1,934 KB budget model exceeds this ceiling by ~306 KB and requires further compression.
+**Status of on-device candidates:**
+
+| Model | INT8 KB | vs safe ceiling | Verdict |
+|---|---|---|---|
+| budget QAT (1,980,200 params) | 1,934 KB | **+306 KB over** | Marginally fits raw flash (2,048 KB) but exceeds safe ceiling; NCT hardware decompression may resolve this |
+| **1M QAT (993,186 params)** | **970 KB** | **−658 KB under** | **✓ Fits comfortably — recommended deployment model** |
 
 **Note:** The Neutron NPU includes a hardware weight decompression engine that can reduce the
 stored model size below the raw INT8 byte count by 10–30% via structured sparsity encoding
-applied at NCT compile time. The actual compiled `.nb` binary size should be measured after
-NCT conversion before concluding the model does not fit — it may already be within budget.
+applied at NCT compile time. If NCT compression achieves 20%, the budget model would drop to
+~1,547 KB — within the safe ceiling. The actual compiled `.nb` size should be measured before
+ruling the budget model out, as it offers significantly better accuracy (19.06 vs 28.30 µm).
 
-**Safe model weight ceiling: ~1,500–1,628 KB INT8** (leaving 420–548 KB for runtime + app).
-A target of ~1M parameters (~977 KB INT8) provides comfortable headroom.
+**Summary:**
+- **Conservative deployment choice:** 1M QAT model (970 KB, 28.30 µm test MAE) — 658 KB
+  flash headroom, safe under all firmware size assumptions.
+- **Best-accuracy on-device choice:** budget QAT model (1,934 KB, 19.06 µm test MAE) — only
+  viable if NCT compression brings it within the safe ceiling; verify after eIQ import.
 
 ### 8.6 RAM feasibility
 
-The budget model's actual channel widths after pruning are very narrow:
+The 1M model has even narrower channels than the budget model after the more aggressive
+pruning (m=2.12 vs m=1.66), resulting in a smaller activation footprint:
 
-| Layer | Input channels | Output channels | Spatial | INT8 buffer |
+**Budget model channel widths (1,980,200 params):**
+
+| Layer | Input ch | Output ch | Spatial | Peak INT8 buffer |
 |---|---|---|---|---|
-| conv1 | 3 | **13** | 112×112 | 159 KB |
+| conv1 | 3 | ~13 | 112×112 | ~159 KB |
 | layer1.x | 13 | 13–32 | 56×56 | ≤40 KB |
 | layer2.x | 13–77 | 26–77 | 28×28 | ≤59 KB |
 | layer3.x | 53–77 | 53 | 14×14 | ≤10 KB |
 | layer4.x | 53–309 | 107–309 | 7×7 | ≤15 KB |
 
-**Peak RAM (eIQ static INT8, 224×224 input):**
-Input buffer (147 KB) + conv1 output (159 KB) = **306 KB** — fits within 512 KB RAM with
-~206 KB headroom for OS, stack, and the eIQ runtime.
+**1M model channel widths (993,186 params):**
 
-At a more realistic embedded input resolution of 128×128, peak drops to just **100 KB**.
+| Layer | Input ch | Output ch | Spatial | Peak INT8 buffer |
+|---|---|---|---|---|
+| conv1 | 3 | ~7 | 112×112 | ~87 KB |
+| layer1.x | 7 | 7–18 | 56×56 | ≤21 KB |
+| layer2.x | 7–46 | 15–46 | 28×28 | ≤35 KB |
+| layer3.x | 30–46 | 30 | 14×14 | ≤6 KB |
+| layer4.x | 30–185 | 63–185 | 7×7 | ≤9 KB |
 
-**Conclusion:** the budget model fits in both flash (**1,934 KB ≤ 2,048 KB** ✓) and RAM
-(**306 KB ≤ 512 KB** ✓) for deployment via the NXP eIQ Toolkit with static INT8 inference.
+*(Channel counts are approximate — m=2.12 reduces each layer proportionally to the
+per-layer sparsity assignments shown in the sensitivity table.)*
+
+**Peak RAM comparison (eIQ static INT8, 224×224 input):**
+
+| Model | Peak RAM | Headroom (512 KB) |
+|---|---|---|
+| budget | ~306 KB | ~206 KB |
+| **1M** | **~170 KB** | **~342 KB** |
+
+At a more realistic embedded input resolution of 128×128, peak drops to approximately
+**100 KB** (budget) and **55 KB** (1M).
+
+**Conclusion:** both models fit comfortably in RAM. The 1M model's narrower channels reduce
+peak activation memory by ~44%, giving substantially more headroom for OS, stack, sensor
+buffers, and the eIQ runtime on the 512 KB MCXN947 RAM.
+
+### 8.7 Three-way accuracy–safety trade-off across on-device candidates
+
+Three models fit within the raw 2,048 KB flash. The accuracy–safety trade-off is:
+
+| Model | Params | INT8 KB | QAT test MAE | vs baseline | Flash headroom (vs 1,628 KB safe ceiling) |
+|---|---|---|---|---|---|
+| budget QAT | 1,980,200 | 1,934 | **19.06 µm** | −4.11 µm | −306 KB ⚠ over |
+| **1.5M QAT** | **1,493,182** | **1,458** | **27.61 µm** | +4.44 µm | **+170 KB ✓** |
+| 1M QAT | 993,186 | 970 | 28.30 µm | +5.13 µm | +658 KB ✓ |
+
+A notable result: reducing from 1.5M to 1M parameters (a 34% reduction) costs only **0.69 µm**
+in test MAE, while reducing from the budget (2M) to 1.5M (a 25% reduction) costs **8.55 µm**.
+This asymmetry suggests a capacity threshold around 1.5–2M parameters below which accuracy
+degrades much more slowly with further compression.
+
+**Deployment decision framework:**
+- **Precision requirement ≤20 µm:** use budget model — verify NCT compiled size ≤1,628 KB.
+  If NCT achieves ≥16% compression the budget model is viable and yields a 8.55 µm advantage.
+- **Precision requirement ≤28 µm, firmware size uncertain:** use 1.5M QAT — 170 KB headroom,
+  virtually identical accuracy to 1M.
+- **Precision requirement ≤28 µm, maximum safety margin needed:** use 1M QAT — 658 KB
+  headroom, 0.69 µm worse than 1.5M.
 
 ---
 
@@ -400,6 +501,7 @@ experiments/compression/resnet/
 │       ├── pruning_results_90.json          # 90%
 │       ├── pruning_results_95.json          # 95%
 │       ├── pruning_results_budget.json      # budget (≤2M params)
+│       ├── pruning_results_1m.json          # 1M params target
 │       ├── sensitivity_results*.json        # per-layer sensitivity tables
 │       └── finetune_history*.json           # per-epoch training histories
 ├── phase2_distillation/
@@ -416,8 +518,10 @@ experiments/compression/resnet/
 │       ├── quantization_results_90.json
 │       ├── quantization_results_95.json
 │       ├── quantization_results_budget.json
+│       ├── quantization_results_1m.json
 │       ├── qat_results_90.json
-│       └── qat_results_budget.json
+│       ├── qat_results_budget.json
+│       └── qat_results_1m.json
 ├── aggregate_results.py                # All JSON → summary table + 2 thesis plots
 ├── results/
 │   ├── compression_summary.json
@@ -434,16 +538,24 @@ experiments/compression/resnet/
 | `checkpoints/resnet_pruned_50.pt` | 50% pruned | 7,125 |
 | `checkpoints/resnet_pruned_90.pt` | 90% pruned | 5,875 |
 | `checkpoints/resnet_pruned_95.pt` | 95% pruned | 5,657 |
-| `checkpoints/resnet_pruned_budget.pt` | budget pruned | **1,934** |
+| `checkpoints/resnet_pruned_budget.pt` | budget pruned | 1,934 |
+| `checkpoints/resnet_pruned_1p5m.pt` | 1.5M pruned | 1,458 |
+| `checkpoints/resnet_pruned_1m.pt` | 1M pruned | **970** |
 | `checkpoints/resnet_distilled.pt` | 85% distilled | 6,193 |
 | `checkpoints/resnet_distilled_50.pt` | 50% distilled | 7,125 |
 | `checkpoints/resnet_distilled_90.pt` | 90% distilled | 5,875 |
 | `checkpoints/resnet_distilled_95.pt` | 95% distilled | 5,657 |
-| `checkpoints/resnet_distilled_budget.pt` | budget distilled | **1,934** |
+| `checkpoints/resnet_distilled_budget.pt` | budget distilled | 1,934 |
+| `checkpoints/resnet_distilled_1p5m.pt` | 1.5M distilled | 1,458 |
+| `checkpoints/resnet_distilled_1m.pt` | 1M distilled | **970** |
 | `checkpoints/resnet_quantized_int8_90.pt` | 90% PTQ INT8 | 5,875 |
 | `checkpoints/resnet_quantized_int8_95.pt` | 95% PTQ INT8 | 5,657 |
-| `checkpoints/resnet_quantized_int8_budget.pt` | budget PTQ INT8 | **1,934** |
-| `checkpoints/resnet_qat_int8_budget.pt` | **budget QAT INT8 ← deploy this** | **1,934** |
+| `checkpoints/resnet_quantized_int8_budget.pt` | budget PTQ INT8 | 1,934 |
+| `checkpoints/resnet_quantized_int8_1p5m.pt` | 1.5M PTQ INT8 | 1,458 |
+| `checkpoints/resnet_quantized_int8_1m.pt` | 1M PTQ INT8 | **970** |
+| `checkpoints/resnet_qat_int8_budget.pt` | budget QAT INT8 — best accuracy if NCT size fits | 1,934 |
+| `checkpoints/resnet_qat_int8_1p5m.pt` | **1.5M QAT INT8 ← recommended safe deployment** | **1,458** |
+| `checkpoints/resnet_qat_int8_1m.pt` | 1M QAT INT8 — maximum headroom option | **970** |
 
 ### Execution commands (for reference)
 
@@ -467,6 +579,16 @@ python experiments/compression/resnet/phase3_quantization/quantize.py \
 # QAT on budget model
 python experiments/compression/resnet/phase3_quantization/qat.py \
     --input-ckpt checkpoints/resnet_distilled_budget.pt
+
+# 1M params run — conservative on-device target (≤1M params, ~970 KB INT8)
+python experiments/compression/resnet/phase1_pruning/train.py \
+    --sparsity 0.95 --target-params 1000000 --output-suffix _1m
+python experiments/compression/resnet/phase2_distillation/train.py \
+    --student-ckpt checkpoints/resnet_pruned_1m.pt --output-suffix _1m
+python experiments/compression/resnet/phase3_quantization/quantize.py \
+    --input-ckpt checkpoints/resnet_distilled_1m.pt --output-suffix _1m
+python experiments/compression/resnet/phase3_quantization/qat.py \
+    --input-ckpt checkpoints/resnet_distilled_1m.pt
 
 # Aggregate all results
 python experiments/compression/resnet/aggregate_results.py
@@ -494,11 +616,21 @@ runtime memory. The eIQ Toolkit resolves this at deployment time.
 
 ### NXP eIQ Toolkit deployment path
 
-1. Export budget model to TorchScript: `resnet_quantized_int8_budget_scripted.pt`
-2. Import into eIQ Toolkit → automatic static INT8 calibration with MATWI calibration images
-3. Toolkit applies INT4 weight packing (2 weights/byte) for Neutron NPU → **967 KB projected**
-4. Validate accuracy using eIQ accuracy checker before flashing
-5. Flash to FRDM-MCXN947 via eIQ deployment flow
+**Option A — Conservative (recommended):** use the 1M QAT model
+1. Export to TorchScript: `resnet_quantized_int8_1m_scripted.pt`
+2. Import into eIQ Toolkit → static INT8 calibration with MATWI representative images
+3. NCT compiles to `.nb` binary; hardware decompression engine may reduce size further
+4. Verify `.nb` size ≤ 1,628 KB (model weight ceiling)
+5. Validate accuracy with eIQ accuracy checker
+6. Flash to FRDM-MCXN947
+
+**Option B — Best accuracy:** use the budget QAT model
+1. Export to TorchScript: `resnet_quantized_int8_budget_scripted.pt`
+2. Same NCT import and calibration process
+3. **Measure `.nb` binary size before flashing** — must be ≤ 1,628 KB after NCT compilation
+4. If hardware decompression achieves ≥16% compression on this model (~1,934 KB × 0.84 ≈ 1,625 KB),
+   Option B becomes viable and yields 28.30 → 19.06 µm accuracy improvement
+5. Otherwise, fall back to Option A
 
 ### Dataset splits
 

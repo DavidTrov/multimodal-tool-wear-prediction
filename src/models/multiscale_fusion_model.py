@@ -38,11 +38,21 @@ SENSOR_FEAT_DIM = 96   # MultiScaleSensorCNN features before head
 
 class MultiScaleFusionModel(nn.Module):
 
-    def __init__(self):
+    def __init__(self, image_feat_dim: int = IMAGE_FEAT_DIM):
+        """
+        Args
+        ----
+        image_feat_dim : dimensionality of the image encoder's penultimate
+                         feature vector.  512 for standard ResNet18; use the
+                         actual avgpool output size for pruned/compressed models
+                         (e.g. 309 for the 2M-param budget model).
+        """
         super().__init__()
 
+        self._image_feat_dim = image_feat_dim
+
         # ── Image encoder ──────────────────────────────────────────────────────
-        # fc is Identity here so forward() always outputs (B, 512).
+        # fc is Identity here so forward() always outputs (B, image_feat_dim).
         # load_phase1_weights() temporarily swaps in Linear(512→1), loads the
         # Phase-1 state dict, then restores Identity.
         backbone = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
@@ -53,7 +63,7 @@ class MultiScaleFusionModel(nn.Module):
         self.sensor_cnn = MultiScaleSensorCNN()
 
         # ── Per-modality normalisation ─────────────────────────────────────────
-        self.image_norm  = nn.LayerNorm(IMAGE_FEAT_DIM)
+        self.image_norm  = nn.LayerNorm(image_feat_dim)
         self.sensor_norm = nn.LayerNorm(SENSOR_FEAT_DIM)
 
         # ── Per-modality projection towers ─────────────────────────────────────
@@ -61,7 +71,7 @@ class MultiScaleFusionModel(nn.Module):
         # This gives each modality its own non-linear transformation and ensures
         # equal gradient flow (128 dims each) regardless of original dimensionality.
         self.img_proj = nn.Sequential(
-            nn.Linear(IMAGE_FEAT_DIM, 128),
+            nn.Linear(image_feat_dim, 128),
             nn.LayerNorm(128),
             nn.GELU(),
         )
@@ -97,6 +107,26 @@ class MultiScaleFusionModel(nn.Module):
         self.sensor_cnn.load_state_dict(
             torch.load(ckpt_path, map_location=device, weights_only=True)
         )
+
+    def load_compressed_image_encoder(self, ckpt_path, device: str = "cpu"):
+        """Load a pruned/compressed ResNet saved as a full model object.
+
+        Pruned models have non-standard channel counts and are saved with
+        torch.save(model, path) rather than torch.save(model.state_dict(), path).
+        This method loads the full object, strips the fc head (replacing it with
+        Identity), and installs it as self.image_encoder.
+
+        The caller must ensure MultiScaleFusionModel was constructed with the
+        correct image_feat_dim matching the compressed model's avgpool output.
+        """
+        obj = torch.load(ckpt_path, map_location=device, weights_only=False)
+        if isinstance(obj, dict):
+            raise ValueError(
+                f"{ckpt_path} contains a state_dict, not a full model object. "
+                "Compressed models must be saved with torch.save(model, path)."
+            )
+        obj.fc = nn.Identity()
+        self.image_encoder = obj.to(device)
 
     def freeze_image_encoder(self):
         """Freeze all ResNet18 parameters (called after load_phase1_weights)."""
