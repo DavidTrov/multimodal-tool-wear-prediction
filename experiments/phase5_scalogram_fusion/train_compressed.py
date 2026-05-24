@@ -46,7 +46,7 @@ CKPT_DIR        = ROOT / "checkpoints"
 RESULTS_DIR     = Path(__file__).parent / "results_compressed"
 
 COMPRESSED_CKPT = CKPT_DIR / "resnet_distilled_budget.pt"
-PHASE4_CKPT     = CKPT_DIR / "best" / "phase4_multiscale_sgdm_best_25.pt"
+PHASE4_CKPT     = CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
 CKPT_PATH       = CKPT_DIR / "phase5_compressed_fusion_best.pt"
 
 # Compressed ResNet avgpool output dimensionality (verified empirically)

@@ -832,12 +832,14 @@ The fusion test set is consistently **225 samples** (not 247), because 22 test s
 | 5c-iii | Two-tower, compressed enc., alt. sensor ckpt | (5,64,64) HPF scalogram | 70,028 | 14.64 ‡ | ±17.95 | 225 |
 | **5d** | **Two-tower, joint-pruned INT8 (compressed enc. + CWT)** | **(5,64,64) HPF scalogram** | **1.47M (1.40 MB INT8)** | **18.70** | **±18.55** | **225** |
 | **5e** ★★ | **Static INT8 ONNX (QDQ, calibrated, INT8 activations)** | **(5,64,64) HPF scalogram** | **1.47M (1.87 MB ONNX)** | **18.69** | **±18.62** | **225** |
+| **5f** ★★★ | **INT8 TFLite (no CBAM, onnx2tf flatbuffer_direct)** | **(5,64,64) HPF scalogram** | **1.47M (1.53 MB TFLite)** | **40.16** | **—** | **225** |
 | — | *Image-only baseline (ResNet18)* | *— (images only)* | *11.18M* | *23.17* | *±19.12* | *247* |
 | — | *Sensor-only baseline (MultiScaleCNN)* | *(5,64,64) HPF scalogram* | *244K* | *24.96* | *±26.19* | *247* |
 | — | *Paper baseline (ResNet50)* | *— (images only)* | *— * | *19.00* | *—* | *—* |
 
 ★ Selected model for downstream compression.  
 ★★ Deployable on NXP FRDM-MCXN947: peak RAM 370 KB / 512 KB, ONNX opset 18, on-device binary ~1.5 MB after eIQ conversion. Phase 5d (dynamic INT8) was not deployable — FP32 activations caused 1,289 KB peak RAM (2.5× over SRAM limit).  
+★★★ First fully working TFLite INT8 model for NXP deployment. CBAM removed (replaced with Identity, not retrained) because its ``view(B,C,1,1)*x`` broadcast breaks all ONNX-to-TFLite converters. Test MAE 40.16 µm is degraded vs 18.70 µm with CBAM; retraining without CBAM would likely recover most of this. Model size 1,564 KB fits in 2 MB flash with 484 KB headroom.  
 ◆ 5d: 50% target sparsity → 35.9% actual reduction, post-distillation val MAE 34.32 µm, dynamic INT8 accuracy drop = 0.00 µm on test. Not deployable due to FP32 activations.  
 † Val MAE for 5c-i/ii is 35.06/30.30 µm; test split is systematically easier than val.  
 ‡ 5c-iii rejected: train MAE (30.11) > test MAE (14.64), val/test gap 21.79 µm, val worse than all baselines — result is a split artefact, not genuine improvement.
