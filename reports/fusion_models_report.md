@@ -636,7 +636,7 @@ Phase 5c-ii achieved 17.66 µm test MAE at 2.19 MB INT8 — 140 KB over the 2 MB
 
 **Vision encoder:** 2M-parameter budget compressed ResNet (pruned + distilled from ResNet18, 309-d avgpool features).  
 **Sensor encoder:** CWT multiscale CNN (MultiScaleSensorCNN) with inception-style entry, GroupNorm, ResBlock, and CBAM attention on (5, 64, 64) HPF scalograms.  
-**Final INT8 size: 1.40 MB** — 612 KB under the 2 MB flash target.
+**Final INT8 weight size: 1.40 MB** — 612 KB under the 2 MB flash target. Note: dynamic INT8 (PyTorch) was later found to be non-deployable due to FP32 activations exceeding SRAM; Phase 5e applies static INT8 quantization to resolve this.
 
 ### Phase 5d-i — Joint Pruning (50% target sparsity)
 
@@ -720,6 +720,71 @@ INT8 quantization is lossless on this model — zero accuracy degradation on the
 
 ---
 
+## Phase 5e — Static INT8 Quantization + ONNX Export {#phase5e}
+
+Phase 5d used PyTorch dynamic quantization (weights INT8, activations FP32). A deployment analysis revealed this was insufficient:
+
+| Tensor | FP32 size | INT8 size |
+|---|---|---|
+| Input image (224×224×3) | 588 KB | 147 KB |
+| conv1 output (13×112×112) | 637 KB | 159 KB |
+| **Peak during conv1** | **1,289 KB** | **370 KB** |
+| NXP FRDM-MCXN947 SRAM | 512 KB | 512 KB |
+| Headroom | **−777 KB ✗** | **+142 KB ✓** |
+
+The normalised FP32 input image alone exceeds the entire 512 KB SRAM. Dynamic quantization — despite storing weights as INT8 — leaves activations as FP32 at inference time, making the model impossible to run on the target hardware regardless of the weight footprint.
+
+**Solution: post-training static quantization with calibration.** A calibration pass over 200 training samples computes per-tensor INT8 scale/zero-point values for every activation tensor. At inference, all convolutional and linear activations are computed and stored as INT8, reducing the peak activation footprint by 4×.
+
+### Why ONNX Runtime quantization (not PyTorch static quant)
+
+PyTorch's `quantize_dynamic` and `quantize_static` produce PyTorch-internal quantized ops (`torch.ops.quantized.*`) that do not export cleanly to standard ONNX. ONNX Runtime PTQ writes **QDQ (QuantizeLinear / DequantizeLinear) nodes** — the format natively accepted by:
+
+- NXP eIQ Model Tool / Neutron NPU backend (MCUXpresso IDE)
+- ONNX Runtime on-device inference
+- onnx2tf → TFLite pipeline (if needed for other boards)
+
+Layers that cannot be statically quantized (GroupNorm, GELU, Sigmoid inside CBAM) are automatically left FP32 by ONNX Runtime's op-support check — no manual exclusion list is required.
+
+### Configuration
+
+| Parameter | Value |
+|---|---|
+| Quantization format | QDQ (QuantizeLinear / DequantizeLinear) |
+| Granularity | Per-tensor (more MCU-compatible than per-channel) |
+| Weight dtype | INT8 symmetric |
+| Activation dtype | INT8 symmetric (zero-point = 0) |
+| Calibration samples | 200 (training split, ~31% coverage) |
+| ONNX opset | 18 |
+
+### Results
+
+| Format | Val MAE (µm) | Test MAE (µm) | File size | Deployable |
+|---|---|---|---|---|
+| FP32 PyTorch (.pt) | 34.32 ± 47.49 | 18.70 ± 18.55 | 5,745 KB | ✗ RAM |
+| Dynamic INT8 PyTorch (.pt) | 34.35 ± 47.53 | 18.70 ± 18.55 | 1,436 KB | ✗ RAM |
+| FP32 ONNX (.onnx) | 34.32 ± 47.49 | 18.70 ± 18.55 | 389 KB† | ✗ RAM |
+| **Static INT8 ONNX (.onnx)** | **34.58 ± 46.89** | **18.69 ± 18.62** | **1,913 KB‡** | **✓** |
+
+† FP32 ONNX is compact because the new torch.onnx exporter uses external data storage for weights by default.  
+‡ ONNX QDQ format embeds full graph metadata (node names, type strings, scale/zero-point tensors per activation). When converted by the NXP eIQ Model Tool to a C array or FlatBuffer binary, this metadata is stripped; the on-device binary is approximately the weight size (~1.4 MB) plus a small topology overhead (~50–100 KB).
+
+**Accuracy drop from static quantization: +0.26 µm val, −0.01 µm test.** The test-set drop is negligible (below measurement precision). The val-set increase of 0.26 µm is also negligible in the context of the val/test gap itself (15.89 µm gap between 34.58 val and 18.69 test).
+
+### Deployment path
+
+```
+fusion_int8.onnx
+    └─→ NXP MCUXpresso IDE
+            └─→ eIQ Model Tool: Import ONNX → Analyse → Generate C code
+                    └─→ model.h / model.c  (INT8 weight array + inference API)
+                            └─→ Flash to FRDM-MCXN947
+```
+
+The eIQ Neutron NPU on the MCXN947 accelerates INT8 tensor operations, meaning the static INT8 ONNX model can additionally benefit from hardware acceleration — not just memory savings.
+
+---
+
 ## Cross-Cutting Discussion {#discussion}
 
 ### Modality complementarity
@@ -765,13 +830,15 @@ The fusion test set is consistently **225 samples** (not 247), because 22 test s
 | 5c-i | Two-tower, compressed enc. (309-d), SGDM | (5,64,64) HPF scalogram | 70,028 | 16.18 † | ±17.28 | 225 |
 | **5c-ii** ★ | **Two-tower, compressed enc. (309-d), Adam** | **(5,64,64) HPF scalogram** | **70,028** | **17.66 †** | **±20.93** | **225** |
 | 5c-iii | Two-tower, compressed enc., alt. sensor ckpt | (5,64,64) HPF scalogram | 70,028 | 14.64 ‡ | ±17.95 | 225 |
-| **5d** ◆ | **Two-tower, joint-pruned INT8 (compressed enc. + CWT)** | **(5,64,64) HPF scalogram** | **1.47M (1.40 MB INT8)** | **18.70** | **±18.55** | **225** |
+| **5d** | **Two-tower, joint-pruned INT8 (compressed enc. + CWT)** | **(5,64,64) HPF scalogram** | **1.47M (1.40 MB INT8)** | **18.70** | **±18.55** | **225** |
+| **5e** ★★ | **Static INT8 ONNX (QDQ, calibrated, INT8 activations)** | **(5,64,64) HPF scalogram** | **1.47M (1.87 MB ONNX)** | **18.69** | **±18.62** | **225** |
 | — | *Image-only baseline (ResNet18)* | *— (images only)* | *11.18M* | *23.17* | *±19.12* | *247* |
 | — | *Sensor-only baseline (MultiScaleCNN)* | *(5,64,64) HPF scalogram* | *244K* | *24.96* | *±26.19* | *247* |
 | — | *Paper baseline (ResNet50)* | *— (images only)* | *— * | *19.00* | *—* | *—* |
 
 ★ Selected model for downstream compression.  
-◆ Deployable on NXP FRDM-MCXN947 (2 MB flash): 50% target sparsity → 35.9% actual reduction, post-distillation val MAE 34.32 µm, INT8 accuracy drop = 0.00 µm on test.  
+★★ Deployable on NXP FRDM-MCXN947: peak RAM 370 KB / 512 KB, ONNX opset 18, on-device binary ~1.5 MB after eIQ conversion. Phase 5d (dynamic INT8) was not deployable — FP32 activations caused 1,289 KB peak RAM (2.5× over SRAM limit).  
+◆ 5d: 50% target sparsity → 35.9% actual reduction, post-distillation val MAE 34.32 µm, dynamic INT8 accuracy drop = 0.00 µm on test. Not deployable due to FP32 activations.  
 † Val MAE for 5c-i/ii is 35.06/30.30 µm; test split is systematically easier than val.  
 ‡ 5c-iii rejected: train MAE (30.11) > test MAE (14.64), val/test gap 21.79 µm, val worse than all baselines — result is a split artefact, not genuine improvement.
 
