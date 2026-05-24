@@ -91,7 +91,6 @@ class MultiScaleSensorCNN(nn.Module):
         Conv(48→64, 3×3) → GN → ReLU
         MaxPool(2)                              → (64, 16, 16)
         ResBlock(64)           ← skip connection
-        CBAM(64)               ← channel + spatial attention
         Conv(64→96, 3×3) → GN → ReLU
         MaxPool(2)                              → (96, 8, 8)
         Conv(96→96, 3×3) → GN → ReLU           → (96, 8, 8)
@@ -132,7 +131,6 @@ class MultiScaleSensorCNN(nn.Module):
             nn.MaxPool2d(2),                                    # (64, 16, 16)
 
             _ResBlock(64),                                      # skip connection
-            _CBAM(64),                                          # attention
 
             nn.Conv2d(64, 96, 3, padding=1, bias=False),
             _gn(96), nn.ReLU(inplace=True),
