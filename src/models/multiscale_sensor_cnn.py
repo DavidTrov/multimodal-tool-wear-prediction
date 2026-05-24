@@ -10,7 +10,7 @@ Changes from the original baseline:
     batch sizes 16-32 due to noisy batch statistics (NeurIPS 2021)
   - One residual block in the feature extractor — skip connections provide
     gradient highways for SGDM's noisier updates (Keskar et al. 2017)
-  - CBAM after ResBlock(64) — channel + spatial attention on scalogram features
+  - SE after ResBlock(64) — channel attention on scalogram features (TFLite-compatible)
   - Dropout(0.3) + two-layer head for stronger regularisation
 """
 
@@ -40,6 +40,29 @@ class _ResBlock(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.relu(x + self.block(x))
+
+
+class _SE(nn.Module):
+    """Squeeze-and-Excitation channel attention (Hu et al. CVPR 2018).
+
+    Re-weights the C feature channels by their global relevance.
+    TFLite-compatible (used in MobileNetV3 / EfficientNet production models).
+    """
+
+    def __init__(self, channels: int, reduction: int = 8):
+        super().__init__()
+        self.fc = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(channels, channels // reduction),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // reduction, channels),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        scale = self.fc(x).view(x.size(0), x.size(1), 1, 1)
+        return x * scale
 
 
 class _CBAM(nn.Module):
@@ -91,6 +114,7 @@ class MultiScaleSensorCNN(nn.Module):
         Conv(48→64, 3×3) → GN → ReLU
         MaxPool(2)                              → (64, 16, 16)
         ResBlock(64)           ← skip connection
+        SE(64)                 ← channel attention
         Conv(64→96, 3×3) → GN → ReLU
         MaxPool(2)                              → (96, 8, 8)
         Conv(96→96, 3×3) → GN → ReLU           → (96, 8, 8)
@@ -131,6 +155,7 @@ class MultiScaleSensorCNN(nn.Module):
             nn.MaxPool2d(2),                                    # (64, 16, 16)
 
             _ResBlock(64),                                      # skip connection
+            _SE(64),                                            # channel attention
 
             nn.Conv2d(64, 96, 3, padding=1, bias=False),
             _gn(96), nn.ReLU(inplace=True),
