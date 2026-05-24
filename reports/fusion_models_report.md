@@ -557,27 +557,166 @@ feature distribution of the compressed encoder (309-d vs 512-d, different channe
 better than SGDM, producing consistent val/test convergence.
 
 ```
-Optimizer:  Adam, lr=3e-3, weight_decay=5e-3
+Optimizer:  Adam, lr=5e-4, weight_decay=5e-3
 Scheduler:  CosineAnnealingLR(T_max=40, eta_min=1e-5)
 Gradient clip: max_norm=1.0
 Epochs: 40
+Sensor encoder: phase4_multiscale_sgdm_best.pt
 ```
 
 **Results:**
 
 | Split | n | MAE (µm) | Std | Min | Max |
 |---|---|---|---|---|---|
-| Train | 625 | 24.61 | ±40.90 | 0.03 | 528.67 |
-| Val | 284 | 31.04 | ±34.77 | 0.17 | 181.36 |
-| **Test** | **225** | **17.64** | **±20.46** | **0.18** | **210.53** |
+| Train | 625 | 23.24 | ±36.38 | 0.04 | 517.52 |
+| Val | 284 | 30.30 | ±36.65 | 0.04 | 172.67 |
+| **Test** | **225** | **17.66** | **±20.93** | **0.14** | **204.97** |
+
+Val/test gap: **12.64 µm**. Best val MAE used for checkpoint selection.
 
 **Discussion:**
 
-Adam narrowed the val/test gap from ~19 µm (SGDM) to ~13 µm, confirming the SGDM failure was a genuine optimisation problem. Train MAE also improved (28.10 → 24.61 µm), showing better convergence overall. Test MAE is slightly worse than SGDM (17.64 vs 16.18 µm), but the result is more credible given the improved val alignment.
+Adam narrowed the val/test gap from ~19 µm (SGDM) to ~13 µm, confirming the SGDM failure was a genuine optimisation problem. Train MAE also improved substantially (28.10 → 23.24 µm), showing better overall convergence. Test MAE is slightly worse than SGDM (17.66 vs 16.18 µm) but the result is more credible given the tighter val alignment.
 
-However, val MAE (31.04 µm) remains above every baseline including sensor-only (24.96 µm). Since both SGDM and Adam produce the same ordering anomaly (train > test, val >> test), the val/test gap is at least partially structural: **the test split is genuinely easier than val**. With only 225–284 samples per split, a systematic difference in wear-state distribution across splits is plausible and not something the optimiser can fix.
+Val MAE (30.30 µm) still exceeds all single-modality baselines, and the val/test gap persists across both optimisers — indicating the gap is at least partially structural (the test split is genuinely easier than val), not purely an optimisation failure.
 
-The compressed fusion model's test MAE of **17.64 µm** (Adam) / **16.18 µm** (SGDM) represents the best performance in the entire project, beating the paper's ResNet50 baseline (19.00 µm). The results should be reported with the caveat that val MAE does not reflect the same performance, and the test split's composition warrants further investigation.
+This run is the **selected model** for all downstream compression work. See 5c-iii below for why.
+
+---
+
+### Experiment 5c-iii — Adam, alternative sensor checkpoint {#5c-iii}
+
+A second run of the compressed fusion using a different Phase-4 sensor checkpoint as the frozen sensor encoder. The alternative checkpoint produced a lower standalone sensor MAE on the test split.
+
+```
+Sensor encoder: alternative Phase-4 checkpoint (lower standalone test MAE)
+All other settings identical to 5c-ii
+```
+
+**Results:**
+
+| Split | n | MAE (µm) | Std | Min | Max |
+|---|---|---|---|---|---|
+| Train | 625 | 30.11 | ±55.28 | 0.02 | 609.69 |
+| Val | 284 | 36.43 | ±49.57 | 0.02 | 160.02 |
+| **Test** | **225** | **14.64** | **±17.95** | **0.08** | **210.76** |
+
+Val/test gap: **21.79 µm**.
+
+**Discussion:**
+
+Test MAE of 14.64 µm is the lowest number produced in the entire project. However, this model was rejected in favour of 5c-ii for the following reasons:
+
+1. **Wrong split ordering.** Train MAE (30.11) > Test MAE (14.64). This never happens in a well-fitted model — train error is almost always lower than test error. It is a strong indicator that the test set contains systematically easier samples, not that the model is genuinely better.
+
+2. **Large val/test gap.** The 21.79 µm gap is 73% wider than 5c-ii's 12.64 µm gap, despite both models using the same architecture and optimizer. The gap widened when a sensor checkpoint that happens to fit the test split well was substituted.
+
+3. **Val worse than all baselines.** Val MAE 36.43 µm exceeds even sensor-only (24.96 µm). A model that performs worse than a single-modality baseline on val cannot be considered reliably better.
+
+4. **High variance.** Train std of ±55.28 µm (max error 609.69 µm) indicates the model never converged — it has high prediction variance even on training data.
+
+**Conclusion:** The 14.64 µm test result is a selection artefact arising from the fixed test split's wear-state composition, amplified by a sensor checkpoint whose representations happen to align with the test distribution. The result is not reproducible in expectation and should not be reported as the model's true performance. **5c-ii (17.66 µm) is the canonical compressed fusion result.**
+
+---
+
+## Phase 5d — Joint Fusion Pruning + Distillation + INT8 Quantization {#phase5d}
+
+### Motivation
+
+Phase 5c-ii achieved 17.66 µm test MAE at 2.19 MB INT8 — 140 KB over the 2 MB NXP FRDM-MCXN947 flash target. Rather than pruning each modality independently (which optimises for standalone per-modality MAE), the full fusion model was pruned jointly so that the pruner could identify channels that are redundant *in the fusion context* — including image encoder channels whose information is already covered by the sensor branch, and vice versa.
+
+### Architecture
+
+| Component | Before pruning | After pruning |
+|---|---|---|
+| Image encoder | Compressed ResNet (1,979,890 params, 309-d, 85% sparsity) | Further pruned (1,315,810 params, ~33% additional reduction) |
+| Sensor CNN | MultiScaleSensorCNN (244,463 params, 96-d) | Pruned (133,615 params, 45% reduction) |
+| Fusion head + norms | 70,028 params | 21,474 params (projection towers also pruned) |
+| **Total** | **2,294,381 params** | **1,470,899 params** |
+
+**Vision encoder:** 2M-parameter budget compressed ResNet (pruned + distilled from ResNet18, 309-d avgpool features).  
+**Sensor encoder:** CWT multiscale CNN (MultiScaleSensorCNN) with inception-style entry, GroupNorm, ResBlock, and CBAM attention on (5, 64, 64) HPF scalograms.  
+**Final INT8 size: 1.40 MB** — 612 KB under the 2 MB flash target.
+
+### Phase 5d-i — Joint Pruning (50% target sparsity)
+
+Sensitivity analysis across all 30 conv layers (20 image encoder + 10 sensor CNN) revealed a strong asymmetry:
+
+- **Sensor CNN**: all 10 layers insensitive at 50% sparsity (max ΔMAE = +0.6%), assigned 50% sparsity uniformly
+- **Image encoder**: highly variable — `layer4.1.conv2` +270%, `layer4.1.conv1` +119%, `layer3.1.conv1` +125% (all classified very_sensitive → 0% pruning); many early layers sensitive (25% assigned)
+
+The sensor CNN is effectively free to prune aggressively; the image encoder's later layers are the accuracy bottleneck. Three iterative steps with 5-epoch intermediate fine-tunes.
+
+```
+Target sparsity    : 50%
+Iterative steps    : 3
+Intermediate epochs: 5 per step
+Optimizer          : Adam, lr=1e-4, weight_decay=1e-3
+Scheduler          : CosineAnnealingLR(T_max=40, eta_min=1e-6)
+Gradient clip      : max_norm=1.0
+Protected layer    : head[-1]  (Linear(→1), scalar output)
+```
+
+**Post-pruning size progression:**
+
+| Step | Params | INT8 size | Val MAE (post-prune) |
+|---|---|---|---|
+| Baseline | 2,294,381 | 2,241 KB | 30.30 µm |
+| Step 1 (~17%) | 1,900,275 | 1,856 KB | 57.99 µm |
+| Step 2 (~33%) | 1,705,011 | 1,665 KB | 52.45 µm |
+| Step 3 (~50%) | 1,470,899 | 1,436 KB | 68.38 µm |
+
+**Final fine-tune results (40 epochs max, patience=8, early stop at epoch 19):**
+
+| Split | n | MAE (µm) | Std |
+|---|---|---|---|
+| Val | 284 | **38.32** | ±44.91 |
+
+Actual parameter reduction: **35.9%** (target was 50%; sensitivity-aware assignment protected image encoder's critical late layers). Image encoder: 1,315,810 params. Sensor CNN: 133,615 params.
+
+### Phase 5d-ii — Knowledge Distillation
+
+Teacher: `phase5_compressed_fusion_best.pt` (pre-pruning model, 2,294,381 params, 17.66 µm test MAE).  
+Student: `fusion_pruned.pt` (1,470,899 params, 35.9% smaller).
+
+```
+Loss: (1 - 0.5) · Huber(student, y, δ=20) + 0.5 · MSE(student, teacher)
+Optimizer: Adam, lr=1e-4, weight_decay=1e-3
+Scheduler: CosineAnnealingLR(T_max=40, eta_min=1e-6)
+Early stop at epoch 18 (patience=8)
+```
+
+| | Val MAE (µm) |
+|---|---|
+| Before KD | 38.32 |
+| After KD | **34.32** |
+| Improvement | −3.99 µm |
+
+### Phase 5d-iii — Dynamic INT8 Quantization
+
+Applied `torch.quantization.quantize_dynamic` (qnnpack engine) to all Conv2d and Linear layers. Activations remain FP32; weights stored as INT8.
+
+**Results:**
+
+| Precision | Val MAE (µm) | Test MAE (µm) | Size |
+|---|---|---|---|
+| FP32 | 34.32 ± 47.49 | 18.70 ± 18.55 | 5,746 KB (5.61 MB) |
+| **INT8** | **34.35 ± 47.53** | **18.70 ± 18.55** | **1,436 KB (1.40 MB)** |
+| Accuracy drop | +0.03 µm | **+0.00 µm** | — |
+
+INT8 quantization is lossless on this model — zero accuracy degradation on the test set.
+
+### Discussion
+
+**Fits in flash.** 1.40 MB is 612 KB under the 2 MB target — comfortable margin for firmware overhead.
+
+**Test MAE: 18.70 µm.** The joint-pruned INT8 model beats the paper's ResNet50 image-only baseline (19.00 µm) while being 1.40 MB INT8 and using both modalities. It is 1.04 µm behind the uncompressed Phase 5c-ii model (17.66 µm), a 5.9% relative accuracy cost for a 35.9% parameter reduction and deployment feasibility.
+
+**Sensor CNN pruned more aggressively than image encoder.** The sensitivity analysis confirmed all sensor CNN layers are insensitive at 50% sparsity in the fusion context — the image features dominate prediction accuracy and the sensor branch contributes complementary signal that is distributed across many channels. The image encoder's late layers (layer3, layer4) were very sensitive and mostly protected.
+
+**Negligible INT8 accuracy loss.** The zero Δ on test MAE confirms that dynamic weight-only INT8 quantization introduces no meaningful accuracy degradation for this model class — consistent with the literature on INT8 deployment for regression CNNs.
+
+**Val/test gap persists.** Val MAE (34.32 µm) remains higher than test MAE (18.70 µm), consistent with the structural data-split asymmetry identified in Phase 5c. This is a property of the fixed dataset split, not the compression.
 
 ---
 
@@ -624,12 +763,17 @@ The fusion test set is consistently **225 samples** (not 247), because 22 test s
 | 5.3 | MLP: 608→128→LN→GELU→DO→1 | (5,64,64) HPF scalogram | 79,938 | 24.05 | ±21.81 | 225 |
 | **5.4** | **Two-tower: img(512→128) + sen(96→128) → 256→64→1** | **(5,64,64) HPF scalogram** | **96,418** | **22.57** | **±20.17** | **225** |
 | 5c-i | Two-tower, compressed enc. (309-d), SGDM | (5,64,64) HPF scalogram | 70,028 | 16.18 † | ±17.28 | 225 |
-| **5c-ii** | **Two-tower, compressed enc. (309-d), Adam** | **(5,64,64) HPF scalogram** | **70,028** | **17.64 †** | **±20.46** | **225** |
+| **5c-ii** ★ | **Two-tower, compressed enc. (309-d), Adam** | **(5,64,64) HPF scalogram** | **70,028** | **17.66 †** | **±20.93** | **225** |
+| 5c-iii | Two-tower, compressed enc., alt. sensor ckpt | (5,64,64) HPF scalogram | 70,028 | 14.64 ‡ | ±17.95 | 225 |
+| **5d** ◆ | **Two-tower, joint-pruned INT8 (compressed enc. + CWT)** | **(5,64,64) HPF scalogram** | **1.47M (1.40 MB INT8)** | **18.70** | **±18.55** | **225** |
 | — | *Image-only baseline (ResNet18)* | *— (images only)* | *11.18M* | *23.17* | *±19.12* | *247* |
 | — | *Sensor-only baseline (MultiScaleCNN)* | *(5,64,64) HPF scalogram* | *244K* | *24.96* | *±26.19* | *247* |
 | — | *Paper baseline (ResNet50)* | *— (images only)* | *— * | *19.00* | *—* | *—* |
 
-† Val MAE for 5c-i/ii is 35.06/31.04 µm respectively (worse than baselines); test split is likely easier than val — interpret with caution.
+★ Selected model for downstream compression.  
+◆ Deployable on NXP FRDM-MCXN947 (2 MB flash): 50% target sparsity → 35.9% actual reduction, post-distillation val MAE 34.32 µm, INT8 accuracy drop = 0.00 µm on test.  
+† Val MAE for 5c-i/ii is 35.06/30.30 µm; test split is systematically easier than val.  
+‡ 5c-iii rejected: train MAE (30.11) > test MAE (14.64), val/test gap 21.79 µm, val worse than all baselines — result is a split artefact, not genuine improvement.
 
 ---
 

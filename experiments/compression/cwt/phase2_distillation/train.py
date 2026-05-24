@@ -48,12 +48,12 @@ CKPT_DIR      = ROOT / "checkpoints"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
 DEFAULT_ALPHA         = 0.5
-DEFAULT_EPOCHS        = 40
+DEFAULT_EPOCHS        = 100
 LR                    = 1e-4
 WEIGHT_DECAY          = 1e-3
 BATCH_SIZE            = 16
 NUM_WORKERS           = 0
-EARLY_STOP_PATIENCE   = 10
+EARLY_STOP_PATIENCE   = 15
 
 
 # ── Utilities ──────────────────────────────────────────────────────────────────
