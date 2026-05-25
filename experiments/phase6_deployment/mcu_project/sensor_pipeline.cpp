@@ -1,18 +1,20 @@
 /**
  * sensor_pipeline.cpp — CWT + TFLite Micro inference for FRDM-MCXN947.
  *
- * Build with: -DARM_MATH_CM33 -DTF_LITE_STATIC_MEMORY -O2 -ffast-math
- * Do NOT define DESKTOP_SHIM — cwt_mcu.c uses real arm_math.h here.
+ * Build with: -DARM_MATH_CM33 -DDESKTOP_SHIM -DTF_LITE_STATIC_MEMORY -O2 -ffast-math
  *
- * Memory layout inside the caller-provided pool (≥508 KB):
+ * Memory layout inside the caller-provided pool (≥391 KB in main SRAM):
  *
- *   Offset 0:                signal buffer  (MAX_SIGNAL_SAMPLES × 4 bytes = 396 KB)
- *   Offset SIGNAL_BYTES:     scalogram      (5×64×64 × 4 bytes  =  80 KB)
- *   Offset SIGNAL_BYTES
- *         + SCALO_BYTES:     CWT workspace  (2×2048 × 4 bytes   =  16 KB)
+ *   Offset 0:                signal buffer  (MAX_SIGNAL_SAMPLES × 4 bytes = 384 KB)
+ *   Offset SIGNAL_BYTES:     CWT workspace  (2×2048 × 4 bytes            =  16 KB)
  *
- * After CWT completes, the signal buffer + workspace region is reused as the
- * TFLite tensor arena (412 KB available, ~384 KB required at peak).
+ * The scalogram (5×64×64 × 4 bytes = 80 KB) is held in a SEPARATE buffer
+ * passed by the caller — place it in SRAMX to keep it out of main SRAM:
+ *   __attribute__((section(".bss.$SRAMX")))
+ *   static float g_scalogram[SENSOR_PIPELINE_SCALOGRAM_FLOATS];
+ *
+ * After CWT completes, the entire pool is reused as the TFLite tensor arena
+ * (391 KB available; ~370 KB required at peak for the fusion model).
  */
 
 #include "sensor_pipeline.h"
@@ -36,21 +38,19 @@
 /* ── Pool layout ─────────────────────────────────────────────────────── */
 
 static constexpr size_t MAX_SIGNAL_SAMPLES = SENSOR_PIPELINE_MAX_SAMPLES;
-static constexpr size_t SIGNAL_BYTES  = MAX_SIGNAL_SAMPLES * sizeof(float); /* 396 KB */
-static constexpr size_t SCALO_FLOATS  = SENSOR_PIPELINE_SCALOGRAM_FLOATS;
-static constexpr size_t SCALO_BYTES   = SCALO_FLOATS * sizeof(float);        /*  80 KB */
+static constexpr size_t SIGNAL_BYTES  = MAX_SIGNAL_SAMPLES * sizeof(float); /* 384 KB */
 static constexpr size_t WKSP_FLOATS   = 2u * CWT_MCU_N_KER;
-static constexpr size_t WKSP_BYTES    = WKSP_FLOATS * sizeof(float);         /*  16 KB */
+static constexpr size_t WKSP_BYTES    = WKSP_FLOATS * sizeof(float);        /*  16 KB */
 
-/* Offsets within pool */
+/* Pool = signal + workspace; scalogram lives in a separate caller-provided buffer */
 static constexpr size_t OFF_SIGNAL    = 0;
-static constexpr size_t OFF_SCALO     = OFF_SIGNAL + SIGNAL_BYTES;
-static constexpr size_t OFF_WKSP      = OFF_SCALO  + SCALO_BYTES;
-static constexpr size_t OFF_ARENA     = 0;    /* arena reuses signal region */
-static constexpr size_t ARENA_BYTES   = SIGNAL_BYTES + WKSP_BYTES; /* 412 KB */
+static constexpr size_t OFF_WKSP      = OFF_SIGNAL + SIGNAL_BYTES;
+
+/* After CWT, the full pool becomes the TFLite arena */
+static constexpr size_t OFF_ARENA     = 0;
+static constexpr size_t ARENA_BYTES   = SIGNAL_BYTES + WKSP_BYTES;          /* 391 KB */
 
 static inline float  *signal_buf(uint8_t *pool)   { return reinterpret_cast<float*>(pool + OFF_SIGNAL); }
-static inline float  *scalo_buf(uint8_t *pool)     { return reinterpret_cast<float*>(pool + OFF_SCALO);  }
 static inline float  *wksp_buf(uint8_t *pool)      { return reinterpret_cast<float*>(pool + OFF_WKSP);   }
 static inline uint8_t*arena_buf(uint8_t *pool)     { return pool + OFF_ARENA; }
 
@@ -58,9 +58,11 @@ static inline uint8_t*arena_buf(uint8_t *pool)     { return pool + OFF_ARENA; }
 
 struct SensorPipeline {
     uint8_t                        *pool;
+    float                          *scalogram;      /* caller-owned, in SRAMX */
     const tflite::Model            *model;
     tflite::MicroInterpreter       *interpreter;
-    TfLiteTensor                   *input_tensor;
+    TfLiteTensor                   *input_tensor;   /* input(0) = image [1,224,224,3] INT8 */
+    TfLiteTensor                   *scalo_tensor;   /* input(1) = scalogram [1,64,64,5] INT8 */
     TfLiteTensor                   *output_tensor;
 };
 
@@ -74,9 +76,6 @@ static SensorPipeline s_pipeline;
  *   QUANTIZE, CONV_2D, RESHAPE, TRANSPOSE, DEQUANTIZE, RSQRT, MEAN,
  *   SQUARED_DIFFERENCE, ADD, SUB, MUL, RELU, CONCATENATION, MAX_POOL_2D,
  *   AVERAGE_POOL_2D, FULLY_CONNECTED, LOGISTIC, REDUCE_MAX, SUM
- *
- * Unlisted ops are not linked, saving flash space. Unused ops in the
- * resolver are harmless but waste a few bytes each.
  */
 static tflite::MicroMutableOpResolver<19> s_resolver;
 
@@ -85,38 +84,48 @@ static tflite::MicroInterpreter *s_interpreter_storage = nullptr;
 alignas(tflite::MicroInterpreter)
 static uint8_t s_interpreter_buf[sizeof(tflite::MicroInterpreter)];
 
+/* ── Image input accessor ────────────────────────────────────────────── */
+
+int8_t *sensor_pipeline_image_input_ptr(SensorPipeline *pipeline)
+{
+    if (!pipeline || !pipeline->input_tensor) return nullptr;
+    return pipeline->input_tensor->data.int8;
+}
+
 /* ── CWT ─────────────────────────────────────────────────────────────── */
 
 SensorPipelineStatus sensor_pipeline_cwt_channel(uint8_t *pool,
+                                                  float   *scalogram,
                                                   float   *signal,
                                                   int      n_samples,
                                                   int      ch_idx)
 {
-    if (!pool || !signal) return SENSOR_PIPELINE_ERR_POOL;
+    if (!pool || !scalogram || !signal) return SENSOR_PIPELINE_ERR_POOL;
     if (n_samples < 64 || n_samples > static_cast<int>(MAX_SIGNAL_SAMPLES))
         return SENSOR_PIPELINE_ERR_INPUT;
 
-    float *scalo   = scalo_buf(pool) + ch_idx * CWT_MCU_CH_SIZE;
-    float *wksp    = wksp_buf(pool);
+    /* Scalogram slice for this channel: ch_idx × 64 × 64 floats */
+    float *scalo_slice = scalogram + ch_idx * CWT_MCU_CH_SIZE;
+    float *wksp        = wksp_buf(pool);
 
-    int ret = cwt_mcu_process_channel(signal, n_samples, ch_idx, scalo, wksp);
+    int ret = cwt_mcu_process_channel(signal, n_samples, ch_idx, scalo_slice, wksp);
     return (ret == 0) ? SENSOR_PIPELINE_OK : SENSOR_PIPELINE_ERR_INPUT;
-}
-
-float *sensor_pipeline_scalogram_ptr(uint8_t *pool)
-{
-    return scalo_buf(pool);
 }
 
 /* ── TFLite init ─────────────────────────────────────────────────────── */
 
-SensorPipeline *sensor_pipeline_init(uint8_t      *pool,
-                                     size_t        pool_bytes,
+SensorPipeline *sensor_pipeline_init(uint8_t       *pool,
+                                     size_t         pool_bytes,
+                                     float         *scalogram,
                                      const uint8_t *model_data)
 {
     if (!pool || pool_bytes < SENSOR_PIPELINE_POOL_BYTES) {
         PRINTF("[pipeline] ERROR: pool too small (%u < %u bytes)\r\n",
                (unsigned)pool_bytes, (unsigned)SENSOR_PIPELINE_POOL_BYTES);
+        return nullptr;
+    }
+    if (!scalogram) {
+        PRINTF("[pipeline] ERROR: scalogram pointer is NULL\r\n");
         return nullptr;
     }
     if (!model_data) {
@@ -153,8 +162,8 @@ SensorPipeline *sensor_pipeline_init(uint8_t      *pool,
     s_resolver.AddReduceMax();
     s_resolver.AddSum();
 
-    /* Construct interpreter in-place using the arena that previously held
-     * the signal buffer.  412 KB available; ~384 KB needed at peak. */
+    /* Construct interpreter in-place using the full pool as tensor arena.
+     * 391 KB available; ~370 KB needed at peak. */
     uint8_t *arena = arena_buf(pool);
     s_interpreter_storage = new (s_interpreter_buf) tflite::MicroInterpreter(
         s_pipeline.model, s_resolver, arena, ARENA_BYTES);
@@ -172,22 +181,43 @@ SensorPipeline *sensor_pipeline_init(uint8_t      *pool,
            (unsigned)(ARENA_BYTES / 1024));
 
     s_pipeline.pool           = pool;
+    s_pipeline.scalogram      = scalogram;
     s_pipeline.interpreter    = s_interpreter_storage;
-    s_pipeline.input_tensor   = s_interpreter_storage->input(0);
+    s_pipeline.input_tensor   = s_interpreter_storage->input(0);  /* image [1,224,224,3] */
+    s_pipeline.scalo_tensor   = s_interpreter_storage->input(1);  /* scalogram [1,64,64,5] */
     s_pipeline.output_tensor  = s_interpreter_storage->output(0);
 
     /* Validate expected I/O shapes */
-    TfLiteIntArray *in_dims = s_pipeline.input_tensor->dims;
-    if (in_dims->size != 4 ||
-        in_dims->data[0] != 1 || in_dims->data[1] != 5 ||
-        in_dims->data[2] != 64 || in_dims->data[3] != 64) {
-        PRINTF("[pipeline] ERROR: unexpected input shape\r\n");
+    /* input(0): image [1, 224, 224, 3] INT8 NHWC */
+    TfLiteIntArray *img_dims = s_pipeline.input_tensor->dims;
+    if (img_dims->size != 4 ||
+        img_dims->data[0] != 1 || img_dims->data[1] != 224 ||
+        img_dims->data[2] != 224 || img_dims->data[3] != 3) {
+        PRINTF("[pipeline] ERROR: unexpected image input shape (expected [1,224,224,3])\r\n");
+        return nullptr;
+    }
+    /* input(1): scalogram [1, 64, 64, 5] INT8 NHWC */
+    TfLiteIntArray *scalo_dims = s_pipeline.scalo_tensor->dims;
+    if (scalo_dims->size != 4 ||
+        scalo_dims->data[0] != 1 || scalo_dims->data[1] != 64 ||
+        scalo_dims->data[2] != 64 || scalo_dims->data[3] != 5) {
+        PRINTF("[pipeline] ERROR: unexpected scalogram input shape (expected [1,64,64,5])\r\n");
         return nullptr;
     }
 
-    PRINTF("[pipeline] Init OK  input=%s output=%s\r\n",
+    PRINTF("[pipeline] Init OK  image=%s scalo=%s output=%s\r\n",
            TfLiteTypeGetName(s_pipeline.input_tensor->type),
+           TfLiteTypeGetName(s_pipeline.scalo_tensor->type),
            TfLiteTypeGetName(s_pipeline.output_tensor->type));
+    PRINTF("[pipeline] Image input:     scale=%.7f  zero_point=%ld\r\n",
+           (double)s_pipeline.input_tensor->params.scale,
+           s_pipeline.input_tensor->params.zero_point);
+    PRINTF("[pipeline] Scalogram input: scale=%.7f  zero_point=%ld\r\n",
+           (double)s_pipeline.scalo_tensor->params.scale,
+           s_pipeline.scalo_tensor->params.zero_point);
+    PRINTF("[pipeline] Output:          scale=%.7f  zero_point=%ld\r\n",
+           (double)s_pipeline.output_tensor->params.scale,
+           s_pipeline.output_tensor->params.zero_point);
 
     return &s_pipeline;
 }
@@ -195,32 +225,49 @@ SensorPipeline *sensor_pipeline_init(uint8_t      *pool,
 /* ── Inference ───────────────────────────────────────────────────────── */
 
 SensorPipelineStatus sensor_pipeline_infer(SensorPipeline *pipeline,
+                                            float          *scalogram,
                                             float          *wear_um_out)
 {
-    if (!pipeline || !wear_um_out) return SENSOR_PIPELINE_ERR_INPUT;
+    if (!pipeline || !scalogram || !wear_um_out) return SENSOR_PIPELINE_ERR_INPUT;
 
-    TfLiteTensor *in  = pipeline->input_tensor;
-    TfLiteTensor *out = pipeline->output_tensor;
-    float        *scalogram = scalo_buf(pipeline->pool);
+    TfLiteTensor *scalo_in = pipeline->scalo_tensor;
+    TfLiteTensor *out      = pipeline->output_tensor;
 
-    /* Copy scalogram into the TFLite input tensor.
+    /* input(0) = image: already populated by the caller via
+     * sensor_pipeline_image_input_ptr() before this call. */
+
+    /* input(1) = scalogram: copy from SRAMX buffer [5,64,64] (NCHW) →
+     * TFLite NHWC layout [64,64,5], quantising float32 to INT8 if needed.
      *
-     * The model was exported with float32 I/O (--keep-io-tensors-format).
-     * Internal layers are INT8; the first op (QUANTIZE) converts the float32
-     * input to INT8 at inference time.  No manual quantization needed here. */
-    if (in->type == kTfLiteFloat32) {
-        memcpy(in->data.f, scalogram, SCALO_BYTES);
-    } else if (in->type == kTfLiteInt8) {
-        /* Fallback: manual quantization if model was re-exported with INT8 I/O */
-        const float scale = in->params.scale;
-        const int   zp    = in->params.zero_point;
-        for (size_t i = 0; i < SCALO_FLOATS; i++) {
-            int q = static_cast<int>(roundf(scalogram[i] / scale)) + zp;
-            in->data.int8[i] = static_cast<int8_t>(
-                q < -128 ? -128 : (q > 127 ? 127 : q));
+     * CWT stores: scalogram[ch * 64*64 + h * 64 + w]  (NCHW)
+     * TFLite wants: scalo_in[h * 64*5 + w * 5 + ch]   (NHWC)            */
+    static constexpr int SCH = 5, SH = 64, SW = 64;
+
+    if (scalo_in->type == kTfLiteFloat32) {
+        /* Transpose NCHW → NHWC in float */
+        float *dst = scalo_in->data.f;
+        for (int h = 0; h < SH; h++)
+            for (int w = 0; w < SW; w++)
+                for (int c = 0; c < SCH; c++)
+                    dst[h * SW * SCH + w * SCH + c] =
+                        scalogram[c * SH * SW + h * SW + w];
+    } else if (scalo_in->type == kTfLiteInt8) {
+        /* Transpose + quantise */
+        const float scale = scalo_in->params.scale;
+        const int   zp    = scalo_in->params.zero_point;
+        for (int h = 0; h < SH; h++) {
+            for (int w = 0; w < SW; w++) {
+                for (int c = 0; c < SCH; c++) {
+                    float val = scalogram[c * SH * SW + h * SW + w];
+                    int   q   = static_cast<int>(roundf(val / scale)) + zp;
+                    scalo_in->data.int8[h * SW * SCH + w * SCH + c] =
+                        static_cast<int8_t>(q < -128 ? -128 : (q > 127 ? 127 : q));
+                }
+            }
         }
     } else {
-        PRINTF("[pipeline] ERROR: unsupported input tensor type %d\r\n", in->type);
+        PRINTF("[pipeline] ERROR: unsupported scalogram tensor type %d\r\n",
+               scalo_in->type);
         return SENSOR_PIPELINE_ERR_INVOKE;
     }
 
@@ -231,12 +278,12 @@ SensorPipelineStatus sensor_pipeline_infer(SensorPipeline *pipeline,
         return SENSOR_PIPELINE_ERR_INVOKE;
     }
 
-    /* Read output */
+    /* Read output — INT8 dequantised to float (µm) */
     if (out->type == kTfLiteFloat32) {
         *wear_um_out = out->data.f[0];
     } else if (out->type == kTfLiteInt8) {
-        *wear_um_out = (out->data.int8[0] - out->params.zero_point)
-                       * out->params.scale;
+        *wear_um_out = static_cast<float>(
+            out->data.int8[0] - out->params.zero_point) * out->params.scale;
     } else {
         PRINTF("[pipeline] ERROR: unsupported output tensor type %d\r\n", out->type);
         return SENSOR_PIPELINE_ERR_INVOKE;

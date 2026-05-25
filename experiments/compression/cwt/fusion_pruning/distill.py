@@ -64,13 +64,13 @@ TEACHER_FUSION_CKPT = CKPT_DIR / "phase5_compressed_fusion_best.pt"
 IMAGE_FEAT_DIM      = 309
 
 DEFAULT_ALPHA   = 0.5
-DEFAULT_EPOCHS  = 40
+DEFAULT_EPOCHS  = 100
 AUX_LAMBDA      = 0.2
 LR              = 1e-4
 WEIGHT_DECAY    = 1e-3
 BATCH_SIZE      = 16
 NUM_WORKERS     = 0
-EARLY_STOP_PATIENCE = 8
+EARLY_STOP_PATIENCE = 100
 
 
 # ── Utilities ──────────────────────────────────────────────────────────────────

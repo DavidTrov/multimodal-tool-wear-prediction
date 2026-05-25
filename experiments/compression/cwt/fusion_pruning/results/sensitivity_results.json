@@ -1,12 +1,12 @@
 {
   "target_sparsity": 0.5,
-  "baseline_val_mae": 30.3,
+  "baseline_val_mae": 38.82,
   "layers": [
     {
       "layer": "image_encoder.conv1",
       "out_channels": 13,
-      "mae_increase": 25.47,
-      "relative_increase": 0.8406,
+      "mae_increase": 13.28,
+      "relative_increase": 0.342,
       "is_residual": false,
       "sensitivity_class": "sensitive",
       "assigned_sparsity": 0.25
@@ -14,8 +14,8 @@
     {
       "layer": "image_encoder.layer1.0.conv1",
       "out_channels": 13,
-      "mae_increase": 2.45,
-      "relative_increase": 0.0809,
+      "mae_increase": 0.62,
+      "relative_increase": 0.0159,
       "is_residual": false,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.5
@@ -23,8 +23,8 @@
     {
       "layer": "image_encoder.layer1.0.conv2",
       "out_channels": 13,
-      "mae_increase": 25.71,
-      "relative_increase": 0.8488,
+      "mae_increase": 11.17,
+      "relative_increase": 0.2878,
       "is_residual": true,
       "sensitivity_class": "sensitive",
       "assigned_sparsity": 0.125
@@ -32,8 +32,8 @@
     {
       "layer": "image_encoder.layer1.1.conv1",
       "out_channels": 32,
-      "mae_increase": 23.43,
-      "relative_increase": 0.7735,
+      "mae_increase": 18.83,
+      "relative_increase": 0.4852,
       "is_residual": false,
       "sensitivity_class": "sensitive",
       "assigned_sparsity": 0.25
@@ -41,8 +41,8 @@
     {
       "layer": "image_encoder.layer1.1.conv2",
       "out_channels": 13,
-      "mae_increase": -1.02,
-      "relative_increase": -0.0336,
+      "mae_increase": -0.9,
+      "relative_increase": -0.0233,
       "is_residual": true,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.25
@@ -50,8 +50,8 @@
     {
       "layer": "image_encoder.layer2.0.conv1",
       "out_channels": 26,
-      "mae_increase": 6.74,
-      "relative_increase": 0.2225,
+      "mae_increase": 9.26,
+      "relative_increase": 0.2386,
       "is_residual": false,
       "sensitivity_class": "sensitive",
       "assigned_sparsity": 0.25
@@ -59,17 +59,17 @@
     {
       "layer": "image_encoder.layer2.0.conv2",
       "out_channels": 77,
-      "mae_increase": 19.34,
-      "relative_increase": 0.6384,
+      "mae_increase": 3.93,
+      "relative_increase": 0.1013,
       "is_residual": true,
-      "sensitivity_class": "sensitive",
-      "assigned_sparsity": 0.125
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.25
     },
     {
       "layer": "image_encoder.layer2.0.downsample.0",
       "out_channels": 77,
-      "mae_increase": -0.73,
-      "relative_increase": -0.0242,
+      "mae_increase": -1.16,
+      "relative_increase": -0.0298,
       "is_residual": true,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.25
@@ -77,8 +77,8 @@
     {
       "layer": "image_encoder.layer2.1.conv1",
       "out_channels": 26,
-      "mae_increase": 18.26,
-      "relative_increase": 0.6029,
+      "mae_increase": 8.09,
+      "relative_increase": 0.2084,
       "is_residual": false,
       "sensitivity_class": "sensitive",
       "assigned_sparsity": 0.25
@@ -86,8 +86,8 @@
     {
       "layer": "image_encoder.layer2.1.conv2",
       "out_channels": 77,
-      "mae_increase": 0.02,
-      "relative_increase": 0.0006,
+      "mae_increase": -0.56,
+      "relative_increase": -0.0145,
       "is_residual": true,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.25
@@ -95,8 +95,8 @@
     {
       "layer": "image_encoder.layer3.0.conv1",
       "out_channels": 53,
-      "mae_increase": 25.38,
-      "relative_increase": 0.8376,
+      "mae_increase": 15.54,
+      "relative_increase": 0.4003,
       "is_residual": false,
       "sensitivity_class": "sensitive",
       "assigned_sparsity": 0.25
@@ -104,17 +104,17 @@
     {
       "layer": "image_encoder.layer3.0.conv2",
       "out_channels": 53,
-      "mae_increase": 34.7,
-      "relative_increase": 1.1453,
+      "mae_increase": 18.02,
+      "relative_increase": 0.4644,
       "is_residual": true,
-      "sensitivity_class": "very_sensitive",
-      "assigned_sparsity": 0.0
+      "sensitivity_class": "sensitive",
+      "assigned_sparsity": 0.125
     },
     {
       "layer": "image_encoder.layer3.0.downsample.0",
       "out_channels": 53,
-      "mae_increase": -0.37,
-      "relative_increase": -0.0121,
+      "mae_increase": -0.41,
+      "relative_increase": -0.0106,
       "is_residual": true,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.25
@@ -122,35 +122,35 @@
     {
       "layer": "image_encoder.layer3.1.conv1",
       "out_channels": 53,
-      "mae_increase": 37.88,
-      "relative_increase": 1.2504,
-      "is_residual": false,
-      "sensitivity_class": "very_sensitive",
-      "assigned_sparsity": 0.0
-    },
-    {
-      "layer": "image_encoder.layer3.1.conv2",
-      "out_channels": 53,
-      "mae_increase": 7.07,
-      "relative_increase": 0.2332,
-      "is_residual": true,
-      "sensitivity_class": "sensitive",
-      "assigned_sparsity": 0.125
-    },
-    {
-      "layer": "image_encoder.layer4.0.conv1",
-      "out_channels": 107,
-      "mae_increase": 17.65,
-      "relative_increase": 0.5825,
+      "mae_increase": 27.45,
+      "relative_increase": 0.7072,
       "is_residual": false,
       "sensitivity_class": "sensitive",
       "assigned_sparsity": 0.25
     },
     {
+      "layer": "image_encoder.layer3.1.conv2",
+      "out_channels": 53,
+      "mae_increase": -1.01,
+      "relative_increase": -0.026,
+      "is_residual": true,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.25
+    },
+    {
+      "layer": "image_encoder.layer4.0.conv1",
+      "out_channels": 107,
+      "mae_increase": 6.27,
+      "relative_increase": 0.1614,
+      "is_residual": false,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.5
+    },
+    {
       "layer": "image_encoder.layer4.0.conv2",
       "out_channels": 309,
-      "mae_increase": 5.19,
-      "relative_increase": 0.1712,
+      "mae_increase": 3.62,
+      "relative_increase": 0.0932,
       "is_residual": true,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.25
@@ -158,8 +158,8 @@
     {
       "layer": "image_encoder.layer4.0.downsample.0",
       "out_channels": 309,
-      "mae_increase": 3.41,
-      "relative_increase": 0.1126,
+      "mae_increase": -1.14,
+      "relative_increase": -0.0295,
       "is_residual": true,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.25
@@ -167,26 +167,26 @@
     {
       "layer": "image_encoder.layer4.1.conv1",
       "out_channels": 256,
-      "mae_increase": 36.09,
-      "relative_increase": 1.1912,
+      "mae_increase": 26.47,
+      "relative_increase": 0.682,
       "is_residual": false,
-      "sensitivity_class": "very_sensitive",
-      "assigned_sparsity": 0.0
+      "sensitivity_class": "sensitive",
+      "assigned_sparsity": 0.25
     },
     {
       "layer": "image_encoder.layer4.1.conv2",
       "out_channels": 309,
-      "mae_increase": 81.88,
-      "relative_increase": 2.7026,
+      "mae_increase": 14.45,
+      "relative_increase": 0.3722,
       "is_residual": true,
-      "sensitivity_class": "very_sensitive",
-      "assigned_sparsity": 0.0
+      "sensitivity_class": "sensitive",
+      "assigned_sparsity": 0.125
     },
     {
       "layer": "sensor_cnn.path_1x1.0",
       "out_channels": 16,
-      "mae_increase": -0.12,
-      "relative_increase": -0.004,
+      "mae_increase": 0.09,
+      "relative_increase": 0.0022,
       "is_residual": false,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.5
@@ -194,8 +194,8 @@
     {
       "layer": "sensor_cnn.path_3x3.0",
       "out_channels": 8,
-      "mae_increase": 0.02,
-      "relative_increase": 0.0006,
+      "mae_increase": -0.22,
+      "relative_increase": -0.0056,
       "is_residual": false,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.5
@@ -203,8 +203,8 @@
     {
       "layer": "sensor_cnn.path_3x3.3",
       "out_channels": 24,
-      "mae_increase": 0.15,
-      "relative_increase": 0.0051,
+      "mae_increase": 0.09,
+      "relative_increase": 0.0024,
       "is_residual": false,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.5
@@ -212,8 +212,8 @@
     {
       "layer": "sensor_cnn.path_5x5.0",
       "out_channels": 4,
-      "mae_increase": -0.02,
-      "relative_increase": -0.0007,
+      "mae_increase": 0.01,
+      "relative_increase": 0.0002,
       "is_residual": false,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.5
@@ -221,8 +221,8 @@
     {
       "layer": "sensor_cnn.path_5x5.3",
       "out_channels": 8,
-      "mae_increase": 0.19,
-      "relative_increase": 0.0062,
+      "mae_increase": 0.04,
+      "relative_increase": 0.001,
       "is_residual": false,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.5
@@ -230,8 +230,8 @@
     {
       "layer": "sensor_cnn.features.1",
       "out_channels": 64,
-      "mae_increase": -0.02,
-      "relative_increase": -0.0007,
+      "mae_increase": 0.28,
+      "relative_increase": 0.0073,
       "is_residual": false,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.5
@@ -239,8 +239,8 @@
     {
       "layer": "sensor_cnn.features.5.block.0",
       "out_channels": 64,
-      "mae_increase": -0.0,
-      "relative_increase": -0.0001,
+      "mae_increase": 0.11,
+      "relative_increase": 0.0028,
       "is_residual": false,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.5
@@ -248,8 +248,8 @@
     {
       "layer": "sensor_cnn.features.5.block.3",
       "out_channels": 64,
-      "mae_increase": 0.02,
-      "relative_increase": 0.0005,
+      "mae_increase": -0.3,
+      "relative_increase": -0.0076,
       "is_residual": true,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.25
@@ -257,8 +257,8 @@
     {
       "layer": "sensor_cnn.features.7",
       "out_channels": 96,
-      "mae_increase": 0.19,
-      "relative_increase": 0.0064,
+      "mae_increase": 1.56,
+      "relative_increase": 0.0402,
       "is_residual": false,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.5
@@ -266,8 +266,8 @@
     {
       "layer": "sensor_cnn.features.11",
       "out_channels": 96,
-      "mae_increase": 0.0,
-      "relative_increase": 0.0002,
+      "mae_increase": -0.92,
+      "relative_increase": -0.0236,
       "is_residual": false,
       "sensitivity_class": "insensitive",
       "assigned_sparsity": 0.5
