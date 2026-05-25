@@ -1,14 +1,14 @@
 {
   "sparsity": 0.5,
-  "n_params_before": 2294381,
-  "n_params_after": 1470899,
-  "actual_reduction": 0.3589,
-  "n_params_image_encoder": 1315810,
-  "n_params_sensor_cnn": 133615,
-  "int8_kb_before": 2240.6,
-  "int8_kb_after": 1436.4,
+  "n_params_before": 2294283,
+  "n_params_after": 1126695,
+  "actual_reduction": 0.5089,
+  "n_params_image_encoder": 971704,
+  "n_params_sensor_cnn": 133517,
+  "int8_kb_before": 2240.5,
+  "int8_kb_after": 1100.3,
   "fits_in_flash": true,
-  "val_mae_baseline": 30.3,
-  "val_mae_pruned": 38.32,
+  "val_mae_baseline": 38.82,
+  "val_mae_pruned": 42.77,
   "checkpoint": "/Users/david/Projects/University/Maastricht University/Thesis/checkpoints/fusion_pruned.pt"
 }
