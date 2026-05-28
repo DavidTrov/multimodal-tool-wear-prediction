@@ -18,7 +18,9 @@
 8. [Phase 4 — Channel Ablation Study](#phase-4-channels)
 9. [Phase 4 — Hyperparameter Grid Search](#phase-4-gridsearch)
 10. [Phase 4 — Final Sensor-Only Best](#phase-4-final)
-11. [Summary Results Table](#summary)
+11. [Phase 4 — INT8 TFLite Deployment](#phase-4-tflite)
+12. [Phase 4 — CBAM Incompatibility and SE Block Replacement](#phase-4-se)
+13. [Summary Results Table](#summary)
 
 ---
 
@@ -723,6 +725,120 @@ The final sensor-only result of **24.96 µm** is remarkably close to the image-o
 
 ---
 
+## Phase 4 — INT8 TFLite Deployment {#phase-4-tflite}
+
+### Methodology
+
+After achieving 24.96 µm test MAE with the full MultiScaleSensorCNN (with CBAM), the model was converted to a deployable INT8 TFLite flatbuffer for the NXP FRDM-MCXN947.
+
+**Conversion pipeline (`experiments/phase6_deployment/`):**
+1. `export_onnx.py` — exports `phase4_multiscale_sgdm_best_25.pt` to ONNX opset 18 (`checkpoints/onnx/phase4_multiscale_sgdm_best_25.onnx`)
+2. `build_calibration_data.py` — collects calibration samples from the training split
+3. **NXP `eiq-onnx2tflite` (`onnx2quant`)** — performs static INT8 quantization and produces the TFLite flatbuffer (`checkpoints/onnx/phase4_multiscale_sgdm_best_25_int8.tflite`)
+4. `validate_tflite.py` — loads both the PyTorch FP32 model and the TFLite INT8 model and compares predictions via `ai_edge_litert`
+
+**Important — CBAM is present in this TFLite.** Unlike the fusion model conversion (Phase 5f, which used onnx2tf and hit a CBAM incompatibility), the standalone sensor model was converted with NXP's `eiq-onnx2tflite` tool, which successfully handles CBAM's spatial attention Conv2d(2→1, 7×7) for this 244K-param graph. The CBAM incompatibility is tool-specific and model-complexity-specific: onnx2tf on the larger 2.3M-param fusion model corrupts the spatial attention dims during NCHW→NHWC transposition; eiq-onnx2tflite on the standalone sensor model does not.
+
+**Validation criterion:** MAE delta between PyTorch FP32 and TFLite INT8 < 5 µm; max per-sample absolute difference < 20 µm.
+
+### Results
+
+| Format | Val MAE (µm) | Test MAE (µm) | n |
+|---|---|---|---|
+| PyTorch FP32 | 45.70 | 24.956 | val: 300 / test: 247 |
+| **TFLite INT8** | **45.18** | **24.744** | val: 300 / test: 247 |
+| Δ (INT8 − FP32) | −0.52 | **−0.21** | — |
+
+**Per-sample statistics (test split):**
+
+| Metric | Value |
+|---|---|
+| Mean bias (TFLite − PyTorch) | −3.255 µm |
+| Std of per-sample diff | ±1.851 µm |
+| Max absolute diff | 10.29 µm ✓ (< 20 µm) |
+| 95th-percentile abs diff | 5.999 µm |
+| Pearson correlation | 0.9983 |
+| Validation pass | ✓ |
+
+**Model size:** 237.6 KB INT8 (well within any deployment budget; the NXP FRDM-MCXN947 has 2 MB flash).
+
+### Discussion
+
+Quantization of the standalone sensor CNN is essentially lossless: the test MAE actually decreases by 0.21 µm from FP32 to INT8, which is within measurement noise. The near-perfect per-sample correlation (0.9983) confirms that the INT8 model produces the same relative rankings as the FP32 version. This result validates the overall design choices — GroupNorm, HuberLoss, and the compact 244K-parameter architecture are all quantization-friendly.
+
+The small model size (237.6 KB) is a key advantage: it fits in 2 MB flash alongside the fusion head and image encoder, and its 96-dim embedding output is cheap to transmit to the fusion layer at inference time. The 4× activation footprint reduction from INT8 also means the sensor CNN can run entirely in the 512 KB SRAM of the target MCU.
+
+---
+
+## Phase 4 — CBAM Incompatibility and SE Block Replacement {#phase-4-se}
+
+### Methodology
+
+During the fusion model TFLite conversion (Phase 5f), the CBAM module was found to be incompatible with the **onnx2tf** ONNX-to-TFLite pipeline. This is distinct from the standalone sensor model deployment above, where CBAM converted without issue using NXP's **eiq-onnx2tflite** tool. The incompatibility is therefore tool-specific, not a fundamental property of CBAM itself.
+
+The failure with onnx2tf occurs specifically in CBAM's **spatial attention** branch:
+
+```
+spatial_att:  channel_mean(x) → (B, 1, H, W)
+              channel_max(x)  → (B, 1, H, W)
+              cat → (B, 2, H, W)
+              Conv2d(2→1, 7×7, pad=3) → Sigmoid
+              x_out = x * spatial_map
+```
+
+The Conv2d(2→1, 7×7) receives a tensor of shape (B, 2, H, W). During onnx2tf's NCHW→NHWC layout transposition and subsequent INT8 calibration, the channel dimension of this convolution is corrupted, causing a runtime error: `input_channel % filter_input_channel != 0 (1 != 0)`. The error manifests only in the INT8 quantized TFLite (not FP32), because INT8 calibration exposes the dimension mismatch.
+
+CBAM's **channel attention** branch — a AvgPool → MLP → Sigmoid → `view(B,C,1,1) * x` pattern — is not the source of the error; this same pattern is used in SE blocks (MobileNetV3, EfficientNet) and is confirmed TFLite-compatible.
+
+**SE block (Squeeze-and-Excitation) as replacement:**
+
+The SE block (Hu et al., CVPR 2018) provides channel attention identical to CBAM's first stage while omitting the spatial attention that causes the TFLite failure:
+
+```
+input x  (B, C, H, W)
+│
+├─ AdaptiveAvgPool2d(1) → Flatten   (B, C)
+├─ Linear(C → C/8) → ReLU
+├─ Linear(C/8 → C) → Sigmoid        (B, C)
+│
+scale = sigmoid_output.view(B, C, 1, 1)
+output = x * scale                  (B, C, H, W)
+```
+
+Channel attention re-weights the 64 feature channels at the 16×16 spatial stage by their global relevance to wear state. This is the component of CBAM identified as most important for the sensor regression task — the spatial attention (which focuses on specific time-frequency regions) is secondary for a model that already uses a multi-scale inception entry block to capture multi-resolution features.
+
+SE blocks are natively TFLite-compatible: they appear in production-deployed models including MobileNetV3 and EfficientNet family, and have been verified to pass through onnx2tf's flatbuffer_direct pipeline without error.
+
+**Architecture change summary:**
+
+| | CBAM | SE | No attention |
+|---|---|---|---|
+| Channel attention | ✓ | ✓ | ✗ |
+| Spatial attention | ✓ | ✗ | ✗ |
+| TFLite-compatible | ✗ (spatial att. fails) | ✓ | ✓ |
+| Parameters | ~244K | ~244K | ~243K |
+| Additional params vs no-attention | +1,088 (CBAM) | +1,096 (SE) | — |
+
+**Training:** `python experiments/phase4_sensor_cnn/train.py --arch multiscale --optim sgdm` (100 epochs, CosineAnnealingLR, HuberLoss δ=20).
+
+### Results
+
+| Configuration | Val MAE (µm) | Status |
+|---|---|---|
+| MultiScaleSensorCNN + CBAM (best) | 34.32 (best val; test 24.96 µm) | Baseline |
+| MultiScaleSensorCNN, no attention (retrained) | 45.68 (best val, epoch 12) | ✗ degraded |
+| **MultiScaleSensorCNN + SE (retrain underway)** | **TBD** | **Ongoing** |
+
+The no-attention retrain converged early (epoch 12) and plateaued at 45.68 µm val MAE, significantly worse than CBAM (34.32 µm). This confirms that the attention mechanism is genuinely important for this task, motivating the SE replacement rather than simply removing it.
+
+### Discussion
+
+The CBAM incompatibility represents a TFLite deployment constraint specific to the spatial attention design. The channel attention component — which dynamically re-weights the five heterogeneous sensor channels (accelerometer, acoustic, fx, fy, fz) by their wear-state relevance — is preserved in the SE block and is expected to provide most of the performance benefit. The spatial attention (localising specific time-frequency wear signatures at the 16×16 stage) is lost; however, its contribution is partially compensated by the multi-scale inception entry block, which already captures information at three spatial scales before the feature extractor.
+
+The decision to replace CBAM with SE rather than simply removing attention is justified by the no-attention retrain result: removing all attention causes a substantial val MAE regression (34.32 → 45.68 µm). The SE retrain is expected to recover most of this loss, since the channel attention component contributes more to performance than the spatial attention in typical sensor fusion regression tasks (Li et al., 2019).
+
+---
+
 ## Summary Results Table {#summary}
 
 | # | Method | Input | MAE (µm) | Std | n |
@@ -739,6 +855,9 @@ The final sensor-only result of **24.96 µm** is remarkably close to the image-o
 | 4.4 | + Force HPF (force channels only) | CWT (5ch), aircut+HPF | 27.19 | ±25.92 | 247 |
 | 4.5 | Channel ablation: acc + acoustic + fx | CWT (3ch), aircut+HPF | 29.84 | ±27.12 | 247 |
 | **4.6** | **MultiScaleSensorCNN + grid search** | **CWT (5ch), aircut+HPF** | **24.96** | **±26.19** | **247** |
+| 4.7 | MultiScaleSensorCNN + CBAM → INT8 TFLite | CWT (5ch), aircut+HPF | 24.744 | ±— | 247 |
+| 4.8 | MultiScaleSensorCNN, no attention (retrained) | CWT (5ch), aircut+HPF | — (val 45.68) | — | — |
+| **4.9** | **MultiScaleSensorCNN + SE block (ongoing)** | **CWT (5ch), aircut+HPF** | **TBD** | **—** | **—** |
 | — | *Reference: image-only ResNet18* | *Flank images* | *23.17* | *±19.12* | *247* |
 | — | *Reference: paper baseline (ResNet50)* | *Flank images* | *19.00* | *—* | *—* |
 

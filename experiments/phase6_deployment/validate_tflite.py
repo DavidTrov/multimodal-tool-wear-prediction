@@ -45,7 +45,7 @@ MAX_DIFF_THRESHOLD  = 20.0  # µm — per-sample sanity guard
 
 def run_pytorch(split: str):
     print(f"Loading PyTorch FP32 model from {CKPT_PATH.name}...")
-    model = MultiScaleSensorCNN()
+    model = MultiScaleSensorCNN(attention="cbam")  # checkpoint pre-dates SE replacement
     state = torch.load(CKPT_PATH, map_location="cpu", weights_only=False)
     model.load_state_dict(state)
     model.eval()

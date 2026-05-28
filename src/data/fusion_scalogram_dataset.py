@@ -7,7 +7,9 @@ Each sample returns:
     wear      : scalar float32         — VB wear in µm
 
 Only samples that have BOTH a valid ImageFile and a pre-computed .pt scalogram
-are included (intersection).  On the test split this is 225 of 247 samples.
+are included (intersection).  All 247 test-split samples are present after the
+parquet was rebuilt in May 2026 to fix an index-drift issue caused by 22 rows
+being appended to labels.csv after the original parquet was generated.
 
 Pre-compute scalograms with:
     python experiments/phase3_fusion/precompute_scalograms.py --force

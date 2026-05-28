@@ -1,5 +1,5 @@
 {
-  "model_ckpt": "/Users/david/Projects/University/Maastricht University/Thesis/checkpoints/fusion_distilled.pt",
+  "model_ckpt": "checkpoints/fusion_distilled.pt",
   "fp32_onnx": "/Users/david/Projects/University/Maastricht University/Thesis/checkpoints/fusion_fp32.onnx",
   "int8_onnx": "/Users/david/Projects/University/Maastricht University/Thesis/checkpoints/fusion_int8.onnx",
   "opset_version": 18,
@@ -8,20 +8,20 @@
   "fp32_onnx_kb": 377.0,
   "int8_onnx_kb": 1561.7,
   "fp32": {
-    "val_mae": 42.77,
-    "val_std": 57.1,
-    "test_mae": 22.51,
-    "test_std": 22.77
+    "val_mae": 47.12,
+    "val_std": 62.13,
+    "test_mae": 25.87,
+    "test_std": 26.78
   },
   "int8": {
-    "val_mae": 47.8,
-    "val_std": 57.51,
-    "test_mae": 31.43,
-    "test_std": 27.27
+    "val_mae": 51.68,
+    "val_std": 61.91,
+    "test_mae": 34.8,
+    "test_std": 30.62
   },
   "accuracy_drop": {
-    "val": 5.03,
-    "test": 8.92
+    "val": 4.56,
+    "test": 8.93
   },
   "ram": {
     "dynamic_quant_fp32_acts": {

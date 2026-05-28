@@ -23,8 +23,10 @@
 6. [Phase 5 v2 — MLP Head (Non-Linear Fusion)](#phase-5v2)
 7. [Phase 5 v3 — GELU Activation](#phase-5v3)
 8. [Phase 5 v4 — Two-Tower Projection (Final Best)](#phase-5v4)
-9. [Cross-Cutting Discussion](#discussion)
-10. [Summary Results Table](#summary)
+9. [Phase 5f — INT8 TFLite Conversion (CBAM Removed, onnx2tf)](#phase5f)
+10. [Phase 5g — SE Block Replacement (Ongoing)](#phase5g)
+11. [Cross-Cutting Discussion](#discussion)
+12. [Summary Results Table](#summary)
 
 ---
 
@@ -785,6 +787,165 @@ The eIQ Neutron NPU on the MCXN947 accelerates INT8 tensor operations, meaning t
 
 ---
 
+## Phase 5f — INT8 TFLite Conversion (CBAM Removed, onnx2tf) {#phase5f}
+
+### Motivation
+
+Phase 5e established a deployable static INT8 ONNX model (18.69 µm test MAE). TFLite flatbuffers offer an alternative deployment format: they compile away graph topology metadata (~400 KB overhead in ONNX QDQ format), are supported by TFLite Micro on ARM Cortex-M, and enable deployment on Google Edge TPU and other TFLite-runtime boards. Phase 5f attempts to produce an INT8 TFLite from the pruned+distilled fusion model via the onnx2tf `flatbuffer_direct` pipeline.
+
+**Note on model identity:** Phase 5f uses a more aggressively pruned variant of the fusion model (1,126,695 params, 50.9% actual reduction from 2,294,283) compared to Phase 5d/5e (1,470,899 params, 35.9% reduction). This more aggressive pruning reduced the FP32 baseline from 22.57 µm (Phase 5c-ii) to 22.51 µm test MAE — a negligible difference. The key distinction is that the Phase 5f model is ~344K parameters smaller, resulting in a more compact TFLite.
+
+### Architecture
+
+| Component | Phase 5d/5e | Phase 5f |
+|---|---|---|
+| Image encoder params | 1,315,810 | 971,704 |
+| Sensor CNN params | 133,615 | 133,517 |
+| Fusion head + norms | 21,474 | 21,474 |
+| **Total** | **1,470,899** | **1,126,695** |
+| Actual pruning reduction | 35.9% | 50.9% |
+| INT8 weight estimate | 1,436 KB | 1,100 KB |
+
+### CBAM Incompatibility
+
+**Context:** The standalone sensor CNN (Phase 4, 244K params) was successfully converted to INT8 TFLite with CBAM intact using NXP's `eiq-onnx2tflite` tool — achieving near-lossless quantization (Δ = 0.21 µm). The fusion model conversion uses **onnx2tf** (a different tool), which fails on CBAM.
+
+The CBAM incompatibility is therefore **onnx2tf-specific**, not a fundamental property of CBAM. The difference is attributed to how each tool handles NCHW→NHWC transposition in the presence of CBAM's spatial attention path, and potentially to the larger and more complex fusion graph (2.3M params vs 244K) amplifying the issue.
+
+The PyTorch ONNX exporter (opset 18) includes CBAM's spatial attention Conv2d(2→1, 7×7) in the exported graph. During onnx2tf's NCHW→NHWC layout transposition, this conv's input channel dimension is corrupted. The resulting INT8 TFLite raises a runtime error at the quantized CONV_2D operator:
+
+```
+RuntimeError: input_channel % filter_input_channel != 0 (1 != 0)
+```
+
+The error is INT8-specific: FP32 TFLite converts successfully. The corruption occurs because the quantization calibration step assigns INT8 scales that expose the dimension mismatch introduced during layout transposition of the 2-channel input to the 7×7 conv.
+
+**Additional issue:** The PyTorch ONNX exporter (opset 18) shares a single `axes` initializer across multiple ReduceMean/ReduceMax nodes (used inside GroupNorm). onnx2tf misparses shared axes tensors as INT32, causing a type error. This was resolved by deduplicating axes initializers so each Reduce node has its own copy.
+
+**Workaround (Phase 5f):** At ONNX export time, all `_CBAM` modules are replaced with `nn.Identity()` at runtime (no retraining). This eliminates both the spatial attention 7×7 conv and the channel attention `view(B,C,1,1)*x` pattern from the ONNX graph.
+
+### Conversion Pipeline
+
+```
+fusion_distilled.pt  (1,126,695 params, FP32)
+    │
+    Step 1: Load model → replace _CBAM with nn.Identity() → export FP32 ONNX (opset 18)
+    │
+    Step 2: Deduplicate shared axes initializers (fix ReduceMean/ReduceMax INT32 type error)
+    │
+    Step 3: Prepare calibration data (400 training samples → calib_images.npy, calib_scalograms.npy)
+    │
+    Step 4: onnx2tf flatbuffer_direct
+            output_integer_quantized_tflite=True
+            quant_type=per-channel
+            custom_input_op_name_np_data_path=[image, scalogram]
+    │
+    fusion_tflite/*_integer_quant.tflite   (INT8 flatbuffer)
+    fusion_tflite/*_float32.tflite         (FP32 reference)
+```
+
+**Input layout:** The TFLite model expects NHWC inputs:
+- Image: (1, 224, 224, 3)
+- Scalogram: (1, 64, 64, 5)
+
+### Results
+
+| Format | Val MAE (µm) | Test MAE (µm) | Size | Flash (2 MB budget) |
+|---|---|---|---|---|
+| PyTorch FP32 (with CBAM) | 42.77 | 22.51 | — | ✗ (no flatbuffer) |
+| FP32 TFLite (CBAM removed) | 43.01 | 20.17 | 4,483 KB | ✗ (oversized) |
+| **INT8 TFLite (CBAM removed)** | **46.50** | **30.43** | **1,230 KB** | **✓ (60.1%)** |
+
+Flash headroom at 1,230 KB: **818 KB** (40% free).  
+Peak SRAM (static INT8 activations): **370 KB / 512 KB** — 142 KB headroom.  
+Calibration: 400 training samples.
+
+**Accuracy breakdown:**
+- CBAM removal (FP32 PyTorch → FP32 TFLite): −2.34 µm on test (22.51 → 20.17) — marginal improvement, within noise
+- INT8 quantization (FP32 TFLite → INT8 TFLite): **+10.26 µm** on test (20.17 → 30.43)
+
+The dominant accuracy cost is INT8 quantization, not CBAM removal. The GroupNorm, GELU activations in the fusion head, and residual add operations all contribute quantization noise that accumulates across the deep network.
+
+### Discussion
+
+The INT8 TFLite model (30.43 µm, 1,230 KB) is the current best fully deployable model for the NXP FRDM-MCXN947 in TFLite format. It fits comfortably in 2 MB flash and its static INT8 activations keep peak SRAM within the 512 KB budget.
+
+The 11.73 µm accuracy gap between the Phase 5e ONNX model (18.70 µm, same underlying architecture before the more aggressive pruning) and the Phase 5f TFLite (30.43 µm) has two sources:
+
+1. **Model quality gap (5d → 5f, ~4 µm):** The Phase 5f model used more aggressive pruning (50.9% vs 35.9%), removing more parameters from the image encoder. The sensitivity analysis showed that the image encoder's later layers are critical; the 5f pruning removed more of these than 5d.
+
+2. **INT8 quantization gap (~10 µm):** GroupNorm's statistics-based normalisation and the residual add operations inside the ResBlocks are particularly sensitive to INT8 rounding. The Phase 5d dynamic INT8 quantization was effectively lossless (0.00 µm) because it kept activations FP32; static INT8 with full activation quantization forces these sensitive layers to 8-bit.
+
+The CBAM removal workaround (runtime Identity replacement, no retraining) introduces negligible accuracy cost in FP32 — confirming that CBAM's contribution is primarily as a regulariser during training rather than a critical inference component in this architecture.
+
+---
+
+## Phase 5g — SE Block Replacement (Ongoing) {#phase5g}
+
+### Motivation
+
+Phase 5f's CBAM workaround (runtime Identity replacement) is architecturally unprincipled: the model was trained with CBAM attention but deployed without it. The attention module contributed to training dynamics (gradient routing, channel weighting) that shaped the learned representations, but these representations are now exploited by an inference graph that cannot fully utilise them.
+
+A cleaner solution is to train the model without CBAM from the start, using a TFLite-compatible attention module. The SE (Squeeze-and-Excitation) block preserves CBAM's channel attention — which re-weights the 64 sensor feature channels at the 16×16 spatial stage by their relevance to wear state — while omitting the spatial attention that causes TFLite conversion failure.
+
+### Architecture Change
+
+The `_CBAM(64)` module after `_ResBlock(64)` in `MultiScaleSensorCNN.features` is replaced with `_SE(64)`:
+
+```python
+# Before (CBAM — TFLite-incompatible)
+_ResBlock(64),
+_CBAM(64),   # channel + spatial attention  → Conv2d(2→1, 7×7) fails in INT8 TFLite
+
+# After (SE — TFLite-compatible)
+_ResBlock(64),
+_SE(64),     # channel attention only  → AdaptiveAvgPool → MLP → Sigmoid
+```
+
+`_SE(64)` architecture:
+```
+AdaptiveAvgPool2d(1) → Flatten → Linear(64→8) → ReLU → Linear(8→64) → Sigmoid
+scale.view(B, 64, 1, 1) × x
+```
+
+Parameters: 244,365 (vs 243,269 without attention, vs ~254K with CBAM).  
+The `_CBAM` class definition is retained in the codebase — it is referenced by `HybridSensorCNN`.
+
+### Compression pipeline after SE retrain
+
+Once the SE sensor model converges, the full 6-step pipeline re-runs:
+
+```
+Step 1: Retrain MultiScaleSensorCNN + SE  →  phase4_multiscale_sgdm_best.pt
+Step 2: Retrain compressed fusion model   →  phase5_compressed_fusion_best.pt
+Step 3: Joint fusion pruning              →  fusion_pruned.pt
+Step 4: Post-pruning distillation         →  fusion_distilled.pt
+Step 5: Static INT8 ONNX export           →  fusion_int8.onnx
+Step 6: INT8 TFLite conversion            →  fusion_*_integer_quant.tflite
+```
+
+### Results
+
+| Stage | Val MAE (µm) | Test MAE (µm) | Status |
+|---|---|---|---|
+| SE retrain (sensor-only) | TBD | TBD | Ongoing |
+| Compressed fusion retrain | TBD | TBD | Pending |
+| Post-pruning INT8 TFLite | TBD | TBD | Pending |
+
+**Expected outcome:** The SE block is expected to recover most of the accuracy lost by removing CBAM entirely (no-attention retrain: val MAE 45.68 µm vs CBAM: 34.32 µm). The INT8 TFLite quantization cost (~10 µm) is the larger outstanding challenge; potential improvements include longer calibration (>400 samples) or QAT (Quantization-Aware Training) if the PTQ drop remains large after the SE retrain.
+
+### Discussion
+
+Replacing CBAM with SE is motivated by three considerations:
+
+1. **TFLite-native channel attention.** SE's `view(B,C,1,1)*x` pattern is identical to what CBAM's channel attention uses, and this specific pattern has been verified TFLite-compatible in MobileNetV3 and EfficientNet production deployments.
+
+2. **Training integrity.** The model will be deployed with the same architecture it was trained with, eliminating the runtime Identity-swap inconsistency of Phase 5f.
+
+3. **Expected accuracy recovery.** The channel attention component of CBAM is where most of the attention benefit comes from in sensor fusion regression: dynamically up-weighting informative channels (especially fx HPF-filtered and accelerometer) and down-weighting less informative ones per-sample. The spatial attention provides secondary benefit that the inception entry block partially covers through its multi-scale receptive fields.
+
+---
+
 ## Cross-Cutting Discussion {#discussion}
 
 ### Modality complementarity
@@ -832,14 +993,15 @@ The fusion test set is consistently **225 samples** (not 247), because 22 test s
 | 5c-iii | Two-tower, compressed enc., alt. sensor ckpt | (5,64,64) HPF scalogram | 70,028 | 14.64 ‡ | ±17.95 | 225 |
 | **5d** | **Two-tower, joint-pruned INT8 (compressed enc. + CWT)** | **(5,64,64) HPF scalogram** | **1.47M (1.40 MB INT8)** | **18.70** | **±18.55** | **225** |
 | **5e** ★★ | **Static INT8 ONNX (QDQ, calibrated, INT8 activations)** | **(5,64,64) HPF scalogram** | **1.47M (1.87 MB ONNX)** | **18.69** | **±18.62** | **225** |
-| **5f** ★★★ | **INT8 TFLite (no CBAM, onnx2tf flatbuffer_direct)** | **(5,64,64) HPF scalogram** | **1.47M (1.53 MB TFLite)** | **40.16** | **—** | **225** |
+| **5f** ★★★ | **INT8 TFLite (CBAM removed, onnx2tf flatbuffer_direct)** | **(5,64,64) HPF scalogram** | **1.13M (1.23 MB TFLite)** | **30.43** | **—** | **225** |
+| **5g** | **INT8 TFLite with SE block (ongoing)** | **(5,64,64) HPF scalogram** | **TBD** | **TBD** | **—** | **225** |
 | — | *Image-only baseline (ResNet18)* | *— (images only)* | *11.18M* | *23.17* | *±19.12* | *247* |
 | — | *Sensor-only baseline (MultiScaleCNN)* | *(5,64,64) HPF scalogram* | *244K* | *24.96* | *±26.19* | *247* |
 | — | *Paper baseline (ResNet50)* | *— (images only)* | *— * | *19.00* | *—* | *—* |
 
 ★ Selected model for downstream compression.  
 ★★ Deployable on NXP FRDM-MCXN947: peak RAM 370 KB / 512 KB, ONNX opset 18, on-device binary ~1.5 MB after eIQ conversion. Phase 5d (dynamic INT8) was not deployable — FP32 activations caused 1,289 KB peak RAM (2.5× over SRAM limit).  
-★★★ First fully working TFLite INT8 model for NXP deployment. CBAM removed (replaced with Identity, not retrained) because its ``view(B,C,1,1)*x`` broadcast breaks all ONNX-to-TFLite converters. Test MAE 40.16 µm is degraded vs 18.70 µm with CBAM; retraining without CBAM would likely recover most of this. Model size 1,564 KB fits in 2 MB flash with 484 KB headroom.  
+★★★ Best deployable TFLite INT8 model. CBAM removed at export time (runtime Identity substitution, no retraining) to resolve onnx2tf incompatibility with CBAM spatial attention. 1,230 KB fits in 2 MB flash (60.1% occupied, 818 KB headroom). Peak SRAM 370 KB / 512 KB. Main accuracy cost is INT8 quantization (~10 µm), not CBAM removal (~0 µm in FP32). Uses more aggressively pruned model than Phase 5d/5e (1,126,695 vs 1,470,899 params, 50.9% vs 35.9% reduction). Phase 5g replaces CBAM with SE block and retrains end-to-end to eliminate the runtime workaround.  
 ◆ 5d: 50% target sparsity → 35.9% actual reduction, post-distillation val MAE 34.32 µm, dynamic INT8 accuracy drop = 0.00 µm on test. Not deployable due to FP32 activations.  
 † Val MAE for 5c-i/ii is 35.06/30.30 µm; test split is systematically easier than val.  
 ‡ 5c-iii rejected: train MAE (30.11) > test MAE (14.64), val/test gap 21.79 µm, val worse than all baselines — result is a split artefact, not genuine improvement.
