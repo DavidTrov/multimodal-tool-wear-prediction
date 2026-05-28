@@ -163,7 +163,10 @@ def load_sensor_csv(path: Path) -> pd.DataFrame:
 def run():
     labels = pd.read_csv(DATA_ROOT / "labels.csv")
     df     = labels.dropna(subset=["SensorFile", "wear"]).copy()
-    df     = df[df["SensorFile"].astype(str).str.len() > 0].reset_index(drop=True)
+    df     = df[df["SensorFile"].astype(str).str.len() > 0]
+    # Preserve the original labels.csv row index — this becomes labels_idx in the
+    # parquet and must match (a) the dataset's `labels["labels_idx"] = labels.index`
+    # and (b) the scalogram .pt file names written by precompute_scalograms.py.
     print(f"Rows with sensor + wear label: {len(df)}")
     print(f"PyWavelets available: {HAS_PYWT}")
     n_feats = 5 + 10 + (5 if HAS_PYWT else 0)

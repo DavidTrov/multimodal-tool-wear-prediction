@@ -187,8 +187,9 @@ def run(split: str, arch: str, optim_name: str, no_plots: bool):
         else "mps" if torch.backends.mps.is_available()
         else "cpu"
     )
-    print(f"Device  : {device}")
+    print(f"Device  : {device}  (image model forced to CPU — dynamic INT8 quant)")
     print(f"Split   : {split}")
+    print(f"Image   : resnet_qat_int8_budget.pt")
     print(f"Sensor  : {arch} + {optim_name}\n")
 
     RESULTS_DIR.mkdir(exist_ok=True)
@@ -205,22 +206,25 @@ def run(split: str, arch: str, optim_name: str, no_plots: bool):
     print(f"Sensor dataset : {len(sensor_ds)} samples")
 
     # ── Models ─────────────────────────────────────────────────────────────────
-    img_ckpt    = CKPT_DIR / "phase1_best.pt"
+    img_ckpt    = CKPT_DIR / "resnet_qat_int8_budget.pt"
     sensor_ckpt = CKPT_DIR / f"phase4_{arch}_{optim_name}_best.pt"
 
     for p in (img_ckpt, sensor_ckpt):
         if not p.exists():
             sys.exit(f"Checkpoint not found: {p}")
 
-    img_model = build_resnet18_regressor().to(device)
-    img_model.load_state_dict(torch.load(img_ckpt, map_location=device, weights_only=True))
+    # QAT INT8 models are saved as full serialized objects and only run on CPU
+    torch.backends.quantized.engine = "qnnpack"
+    img_model = torch.load(img_ckpt, map_location="cpu", weights_only=False)
+    img_model.eval()
+    img_device = "cpu"
 
     sensor_model = ARCH_REGISTRY[arch]().to(device)
     sensor_model.load_state_dict(torch.load(sensor_ckpt, map_location=device, weights_only=True))
 
     # ── Inference ──────────────────────────────────────────────────────────────
     print("\nRunning image model inference ...")
-    img_df = run_inference(img_ds, img_model, device)
+    img_df = run_inference(img_ds, img_model, img_device)
 
     print("Running sensor model inference ...")
     sensor_df = run_inference(sensor_ds, sensor_model, device)

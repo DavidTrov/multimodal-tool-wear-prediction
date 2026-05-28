@@ -124,7 +124,15 @@ class MultiScaleSensorCNN(nn.Module):
         Dropout(0.3) → Linear(96, 1)
     """
 
-    def __init__(self, dropout: float = 0.3):
+    def __init__(self, dropout: float = 0.3, attention: str = "se"):
+        """
+        Args:
+            dropout:   Dropout rate before the regression head.
+            attention: Which attention module to place after ResBlock(64).
+                       "se"   — Squeeze-and-Excitation (default, TFLite-compatible)
+                       "cbam" — CBAM channel + spatial attention (legacy, not TFLite-compatible)
+                       "none" — no attention
+        """
         super().__init__()
 
         # ── Multi-scale entry ──────────────────────────────────────────────────
@@ -155,7 +163,7 @@ class MultiScaleSensorCNN(nn.Module):
             nn.MaxPool2d(2),                                    # (64, 16, 16)
 
             _ResBlock(64),                                      # skip connection
-            _SE(64),                                            # channel attention
+            {"se": _SE(64), "cbam": _CBAM(64), "none": nn.Identity()}[attention],
 
             nn.Conv2d(64, 96, 3, padding=1, bias=False),
             _gn(96), nn.ReLU(inplace=True),
