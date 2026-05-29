@@ -99,7 +99,7 @@ def run(input_ckpt: str, epochs: int):
 
     # Derive suffix from input filename for consistent output naming
     # e.g. resnet_distilled_90.pt → _90
-    stem = ckpt_path.stem  # e.g. "resnet_distilled_90" or "resnet_distilled_budget"
+    stem = ckpt_path.stem  # e.g. "resnet_distilled_90" or "resnet_distilled_2m"
     # Extract the run identifier from the checkpoint name.
     # Handles both numeric ("_90") and word ("_budget") suffixes.
     import re as _re

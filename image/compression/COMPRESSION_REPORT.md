@@ -466,7 +466,7 @@ and 35 KB respectively, making all three models highly RAM-feasible.
 Two deployment paths are recommended, in order of preference:
 
 **Option A — Highest accuracy, requires NCT validation (budget QAT):**
-Export `resnet_qat_int8_budget.pt` to TorchScript and import into the NXP eIQ Toolkit.
+Export `resnet_qat_int8_2m.pt` to TorchScript and import into the NXP eIQ Toolkit.
 Measure the compiled `.nb` binary size before flashing. If it falls at or below 1,628 KB
 after NCT compilation, deploy this model. It achieves 19.06 µm test MAE — 4.11 µm better
 than the uncompressed baseline — at 1,980,200 parameters and 88.2% fewer FLOPs than the

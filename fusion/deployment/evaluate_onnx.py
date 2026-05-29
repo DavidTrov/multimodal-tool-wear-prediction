@@ -20,33 +20,32 @@ except ImportError:
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from sensor.cnn.dataset import MATWISensorScalogramDataset
+from fusion.two_tower.dataset import MATWIFusionScalogramDataset
 
+DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
+DEFAULT_MODEL = ROOT / "fusion" / "deployment" / "checkpoints" / "fusion_int8.onnx"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
-# Since we exported with a static shape containing dummy_input of batch size 1
-# (we removed dynamic_axes), we strictly evaluate the ONNX model 1 sample at a time.
-BATCH_SIZE    = 1 
+BATCH_SIZE    = 1
 NUM_WORKERS   = 0
 
-def evaluate_onnx(split: str, session: ort.InferenceSession, input_name: str):
-    ds = MATWISensorScalogramDataset(
-        SCALOGRAM_DIR, FEATURES_PATH, split=split, augment=False,
+def evaluate_onnx(split: str, session: ort.InferenceSession):
+    ds = MATWIFusionScalogramDataset(
+        DATA_ROOT, SCALOGRAM_DIR, FEATURES_PATH, split=split,
     )
     loader = DataLoader(ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
     all_preds, all_targets = [], []
-    
-    for scalograms, targets in loader:
-        # ONNX runtime expects numpy arrays instead of PyTorch tensors
-        inputs_np = scalograms.numpy()
-        
-        # Run inference
-        outputs = session.run(None, {input_name: inputs_np})[0]
-        
-        # Collect predictions and targets
+
+    for images, scalograms, targets in loader:
+        outputs = session.run(
+            None,
+            {"image":     images.numpy().astype(np.float32),
+             "scalogram": scalograms.numpy().astype(np.float32)},
+        )[0]
+
         all_preds.append(outputs.squeeze(1).flatten())
         all_targets.append(targets.numpy())
 
@@ -66,25 +65,26 @@ def evaluate_onnx(split: str, session: ort.InferenceSession, input_name: str):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", type=str, default="checkpoints/phase4_simple_best.onnx", help="Path to ONNX model")
+    parser.add_argument("--model_path", type=str, default=str(DEFAULT_MODEL),
+                        help="Path to ONNX fusion model")
     args = parser.parse_args()
 
-    model_path = ROOT / args.model_path
+    model_path = Path(args.model_path)
     if not model_path.exists():
         sys.exit(f"ONNX model not found: {model_path}\nPlease run the export script first.")
 
     print(f"Loading ONNX model from {model_path}...")
-    session = ort.InferenceSession(str(model_path))
-    input_name = session.get_inputs()[0].name
-    print(f"Model expects input name: '{input_name}' with shape: {session.get_inputs()[0].shape}")
+    session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+    for inp in session.get_inputs():
+        print(f"  Input: '{inp.name}' shape={inp.shape}")
 
     results = {}
-    for split in ("train", "val", "test"):
-        r = evaluate_onnx(split, session, input_name)
+    for split in ("val", "test"):
+        r = evaluate_onnx(split, session)
         results[split] = r
         print(
             f"{split:5s}  n={r['n_samples']:4d}  "
-            f"MAE={r['mae']:.2f} ± {r['mae_std']:.2f} µm  "
+            f"MAE={r['mae']:.2f} +/- {r['mae_std']:.2f} um  "
             f"(min={r['mae_min']:.2f}, max={r['mae_max']:.2f})"
         )
 

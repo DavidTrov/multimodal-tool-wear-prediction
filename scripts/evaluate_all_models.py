@@ -310,7 +310,7 @@ def main():
         all_results["image_resnet18_fp32"] = entry
 
     # ── 2. Pruned+Distilled ResNet 2M (FP32) ────────────────────────────────
-    ckpt = ROOT / "image" / "compression" / "checkpoints" / "resnet_distilled_budget.pt"
+    ckpt = ROOT / "image" / "compression" / "checkpoints" / "resnet_distilled_2m.pt"
     if ckpt.exists() and not skip("resnet_2m_fp32"):
         section("2. Pruned+Distilled ResNet 2M (budget, FP32)")
         model = torch.load(ckpt, map_location=device, weights_only=False)
@@ -325,7 +325,7 @@ def main():
         all_results["resnet_2m_fp32"] = entry
 
     # ── 3. Pruned+Distilled ResNet 2M (QAT INT8) ───────────────────────────
-    ckpt = ROOT / "image" / "compression" / "checkpoints" / "resnet_qat_int8_budget.pt"
+    ckpt = ROOT / "image" / "compression" / "checkpoints" / "resnet_qat_int8_2m.pt"
     if ckpt.exists() and not skip("resnet_2m_qat"):
         section("3. Pruned+Distilled ResNet 2M (budget, QAT INT8)")
         model = torch.load(ckpt, map_location="cpu", weights_only=False)
@@ -357,7 +357,7 @@ def main():
 
     # ── 5. Compressed two-tower fusion (2.29M, SE, FP32) ────────────────────
     compressed_ckpt = ROOT / "fusion" / "two_tower" / "checkpoints" / "phase5_compressed_fusion_best.pt"
-    resnet_ckpt     = ROOT / "image" / "compression" / "checkpoints" / "resnet_distilled_budget.pt"
+    resnet_ckpt     = ROOT / "image" / "compression" / "checkpoints" / "resnet_distilled_2m.pt"
     if compressed_ckpt.exists() and resnet_ckpt.exists() and not skip("fusion_2m_se_fp32"):
         section("5. Compressed two-tower fusion (2.29M, SE, FP32)")
         model = MultiScaleFusionModel(image_feat_dim=309)
