@@ -1,0 +1,23 @@
+{
+  "model_ckpt": "checkpoints/fusion_distilled.pt",
+  "n_params_total": 1470899,
+  "n_params_image_encoder": 1315810,
+  "n_params_sensor_cnn": 133615,
+  "n_params_fusion_head": 21474,
+  "fp32_kb": 5745.7,
+  "int8_kb": 1436.4,
+  "target_kb": 2048,
+  "fits_in_flash": true,
+  "fp32": {
+    "val_mae": 34.32,
+    "test_mae": 18.7
+  },
+  "int8": {
+    "val_mae": 34.35,
+    "test_mae": 18.7
+  },
+  "int8_accuracy_drop": {
+    "val": 0.03,
+    "test": 0.0
+  }
+}

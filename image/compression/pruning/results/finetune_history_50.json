@@ -1,0 +1,128 @@
+[
+  {
+    "epoch": 1,
+    "train_loss": 4115.0188,
+    "val_mae": 59.9725,
+    "val_mae_std": 57.7757,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 2,
+    "train_loss": 4030.6812,
+    "val_mae": 60.1318,
+    "val_mae_std": 57.3448,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 3,
+    "train_loss": 4018.0057,
+    "val_mae": 46.1974,
+    "val_mae_std": 54.6759,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 4,
+    "train_loss": 3466.5252,
+    "val_mae": 44.2628,
+    "val_mae_std": 52.76,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 5,
+    "train_loss": 3627.1562,
+    "val_mae": 42.7158,
+    "val_mae_std": 53.1029,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 6,
+    "train_loss": 3517.4005,
+    "val_mae": 45.7389,
+    "val_mae_std": 53.7668,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 7,
+    "train_loss": 3333.6113,
+    "val_mae": 42.9084,
+    "val_mae_std": 52.3887,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 8,
+    "train_loss": 2934.3429,
+    "val_mae": 40.6531,
+    "val_mae_std": 50.9346,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 9,
+    "train_loss": 3035.156,
+    "val_mae": 46.1054,
+    "val_mae_std": 53.3787,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 10,
+    "train_loss": 3389.3839,
+    "val_mae": 41.923,
+    "val_mae_std": 51.5799,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 11,
+    "train_loss": 3235.3058,
+    "val_mae": 42.2359,
+    "val_mae_std": 50.4784,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 12,
+    "train_loss": 3127.1579,
+    "val_mae": 41.9498,
+    "val_mae_std": 51.5032,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 13,
+    "train_loss": 3138.8533,
+    "val_mae": 45.8857,
+    "val_mae_std": 52.2573,
+    "lr": 1e-05
+  },
+  {
+    "epoch": 14,
+    "train_loss": 2851.6699,
+    "val_mae": 45.2243,
+    "val_mae_std": 52.6757,
+    "lr": 5e-06
+  },
+  {
+    "epoch": 15,
+    "train_loss": 2769.1932,
+    "val_mae": 50.9523,
+    "val_mae_std": 53.0417,
+    "lr": 5e-06
+  },
+  {
+    "epoch": 16,
+    "train_loss": 3074.828,
+    "val_mae": 48.5025,
+    "val_mae_std": 53.3085,
+    "lr": 5e-06
+  },
+  {
+    "epoch": 17,
+    "train_loss": 2968.4102,
+    "val_mae": 43.634,
+    "val_mae_std": 51.3615,
+    "lr": 5e-06
+  },
+  {
+    "epoch": 18,
+    "train_loss": 2562.0731,
+    "val_mae": 41.6525,
+    "val_mae_std": 50.8204,
+    "lr": 5e-06
+  }
+]

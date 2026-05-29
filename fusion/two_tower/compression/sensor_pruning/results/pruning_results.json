@@ -1,0 +1,11 @@
+{
+  "sparsity": 0.7,
+  "n_params_before": 244463,
+  "n_params_after": 133551,
+  "actual_reduction": 0.4537,
+  "int8_kb_before": 238.7,
+  "int8_kb_after": 130.4,
+  "val_mae_baseline": 50.05,
+  "val_mae_pruned": 56.31,
+  "checkpoint": "/Users/david/Projects/University/Maastricht University/Thesis/checkpoints/sensor_pruned.pt"
+}

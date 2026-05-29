@@ -1,0 +1,96 @@
+{
+  "target_sparsity": 0.7,
+  "baseline_val_mae": 50.05,
+  "layers": [
+    {
+      "layer": "path_1x1.0",
+      "out_channels": 16,
+      "mae_increase": -1.6,
+      "relative_increase": -0.032,
+      "is_residual": false,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.7
+    },
+    {
+      "layer": "path_3x3.0",
+      "out_channels": 8,
+      "mae_increase": -0.3,
+      "relative_increase": -0.006,
+      "is_residual": false,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.7
+    },
+    {
+      "layer": "path_3x3.3",
+      "out_channels": 24,
+      "mae_increase": 0.8,
+      "relative_increase": 0.016,
+      "is_residual": false,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.7
+    },
+    {
+      "layer": "path_5x5.0",
+      "out_channels": 4,
+      "mae_increase": -1.19,
+      "relative_increase": -0.0237,
+      "is_residual": false,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.7
+    },
+    {
+      "layer": "path_5x5.3",
+      "out_channels": 8,
+      "mae_increase": 0.25,
+      "relative_increase": 0.005,
+      "is_residual": false,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.7
+    },
+    {
+      "layer": "features.1",
+      "out_channels": 64,
+      "mae_increase": 0.97,
+      "relative_increase": 0.0194,
+      "is_residual": false,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.7
+    },
+    {
+      "layer": "features.5.block.0",
+      "out_channels": 64,
+      "mae_increase": -0.51,
+      "relative_increase": -0.0102,
+      "is_residual": false,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.7
+    },
+    {
+      "layer": "features.5.block.3",
+      "out_channels": 64,
+      "mae_increase": 0.19,
+      "relative_increase": 0.0038,
+      "is_residual": true,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.35
+    },
+    {
+      "layer": "features.7",
+      "out_channels": 96,
+      "mae_increase": -1.42,
+      "relative_increase": -0.0284,
+      "is_residual": false,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.7
+    },
+    {
+      "layer": "features.11",
+      "out_channels": 96,
+      "mae_increase": 0.51,
+      "relative_increase": 0.0102,
+      "is_residual": false,
+      "sensitivity_class": "insensitive",
+      "assigned_sparsity": 0.7
+    }
+  ]
+}

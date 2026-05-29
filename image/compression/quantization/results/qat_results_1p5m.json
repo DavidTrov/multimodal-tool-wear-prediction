@@ -1,0 +1,12 @@
+{
+  "n_params": 1493182,
+  "int8_kb": 1458.2,
+  "int4_kb_estimated": 729.1,
+  "val_mae_fp32": 38.57,
+  "test_mae_fp32": 29.83,
+  "val_mae_qat": 37.45,
+  "test_mae_qat": 27.61,
+  "val_mae_std_qat": 38.95,
+  "test_mae_std_qat": 27.13,
+  "on_device_int8": true
+}
