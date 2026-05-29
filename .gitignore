@@ -1,5 +1,3 @@
-
-
 # Python
 __pycache__/
 *.py[cod]
@@ -15,24 +13,23 @@ env/
 # Environment variables
 .env
 
-checkpoints/calib_data
-
 # VSCode
 .vscode/
 
 # MacOS
 .DS_Store
+**/.DS_Store
 
 # Logs
 *.log
 
-# Data / large files (adjust if needed)
+# Data / large files
 *.csv
 *.parquet
 *.h5
 *.ckpt
 *.pth
-data/raw
+data/raw/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -42,8 +39,12 @@ build/
 dist/
 *.egg-info/
 
+# C build artifacts
+*.o
+*.out
+
+# Claude Code
 .claude/
-docs/
 
 # Misc
 *.swp
