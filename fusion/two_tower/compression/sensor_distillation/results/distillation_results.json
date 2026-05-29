@@ -1,0 +1,8 @@
+{
+  "alpha": 0.5,
+  "n_params": 133551,
+  "int8_kb": 130.4,
+  "val_mae_before_kd": 56.31,
+  "val_mae_after_kd": 49.89,
+  "checkpoint": "/Users/david/Projects/University/Maastricht University/Thesis/checkpoints/sensor_distilled.pt"
+}
