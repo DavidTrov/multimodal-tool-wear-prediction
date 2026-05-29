@@ -189,7 +189,7 @@ def run(split: str, arch: str, optim_name: str, no_plots: bool):
     )
     print(f"Device  : {device}  (image model forced to CPU — dynamic INT8 quant)")
     print(f"Split   : {split}")
-    print(f"Image   : resnet_qat_int8_budget.pt")
+    print(f"Image   : resnet_qat_int8_2m.pt")
     print(f"Sensor  : {arch} + {optim_name}\n")
 
     RESULTS_DIR.mkdir(exist_ok=True)
@@ -206,7 +206,7 @@ def run(split: str, arch: str, optim_name: str, no_plots: bool):
     print(f"Sensor dataset : {len(sensor_ds)} samples")
 
     # ── Models ─────────────────────────────────────────────────────────────────
-    img_ckpt    = CKPT_DIR / "resnet_qat_int8_budget.pt"
+    img_ckpt    = CKPT_DIR / "resnet_qat_int8_2m.pt"
     sensor_ckpt = CKPT_DIR / f"phase4_{arch}_{optim_name}_best.pt"
 
     for p in (img_ckpt, sensor_ckpt):

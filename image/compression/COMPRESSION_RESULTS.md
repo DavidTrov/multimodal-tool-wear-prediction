@@ -545,7 +545,7 @@ experiments/compression/resnet/
 | `checkpoints/resnet_distilled_50.pt` | 50% distilled | 7,125 |
 | `checkpoints/resnet_distilled_90.pt` | 90% distilled | 5,875 |
 | `checkpoints/resnet_distilled_95.pt` | 95% distilled | 5,657 |
-| `checkpoints/resnet_distilled_budget.pt` | budget distilled | 1,934 |
+| `checkpoints/resnet_distilled_2m.pt` | budget distilled | 1,934 |
 | `checkpoints/resnet_distilled_1p5m.pt` | 1.5M distilled | 1,458 |
 | `checkpoints/resnet_distilled_1m.pt` | 1M distilled | **970** |
 | `checkpoints/resnet_quantized_int8_90.pt` | 90% PTQ INT8 | 5,875 |
@@ -553,7 +553,7 @@ experiments/compression/resnet/
 | `checkpoints/resnet_quantized_int8_budget.pt` | budget PTQ INT8 | 1,934 |
 | `checkpoints/resnet_quantized_int8_1p5m.pt` | 1.5M PTQ INT8 | 1,458 |
 | `checkpoints/resnet_quantized_int8_1m.pt` | 1M PTQ INT8 | **970** |
-| `checkpoints/resnet_qat_int8_budget.pt` | budget QAT INT8 — best accuracy if NCT size fits | 1,934 |
+| `checkpoints/resnet_qat_int8_2m.pt` | budget QAT INT8 — best accuracy if NCT size fits | 1,934 |
 | `checkpoints/resnet_qat_int8_1p5m.pt` | **1.5M QAT INT8 ← recommended safe deployment** | **1,458** |
 | `checkpoints/resnet_qat_int8_1m.pt` | 1M QAT INT8 — maximum headroom option | **970** |
 
@@ -574,11 +574,11 @@ python experiments/compression/resnet/phase1_pruning/train.py \
 python experiments/compression/resnet/phase2_distillation/train.py \
     --student-ckpt checkpoints/resnet_pruned_budget.pt --output-suffix _budget
 python experiments/compression/resnet/phase3_quantization/quantize.py \
-    --input-ckpt checkpoints/resnet_distilled_budget.pt --output-suffix _budget
+    --input-ckpt checkpoints/resnet_distilled_2m.pt --output-suffix _budget
 
 # QAT on budget model
 python experiments/compression/resnet/phase3_quantization/qat.py \
-    --input-ckpt checkpoints/resnet_distilled_budget.pt
+    --input-ckpt checkpoints/resnet_distilled_2m.pt
 
 # 1M params run — conservative on-device target (≤1M params, ~970 KB INT8)
 python experiments/compression/resnet/phase1_pruning/train.py \

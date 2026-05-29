@@ -40,13 +40,13 @@ python experiments/compression/resnet/phase2_distillation/train.py \
 echo ""
 echo ">>> [budget] Phase 3a — PTQ Quantization"
 python experiments/compression/resnet/phase3_quantization/quantize.py \
-    --input-ckpt checkpoints/resnet_distilled_budget.pt \
+    --input-ckpt checkpoints/resnet_distilled_2m.pt \
     --output-suffix _budget
 
 echo ""
 echo ">>> [budget] Phase 3b — QAT"
 python experiments/compression/resnet/phase3_quantization/qat.py \
-    --input-ckpt checkpoints/resnet_distilled_budget.pt
+    --input-ckpt checkpoints/resnet_distilled_2m.pt
 
 # ── Aggregate all results + plots ────────────────────────────────────────────
 echo ""

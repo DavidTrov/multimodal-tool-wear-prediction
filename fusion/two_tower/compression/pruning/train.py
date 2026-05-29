@@ -74,7 +74,7 @@ FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
 CKPT_DIR      = ROOT / "checkpoints"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
-COMPRESSED_IMG_CKPT = CKPT_DIR / "resnet_distilled_budget.pt"
+COMPRESSED_IMG_CKPT = CKPT_DIR / "resnet_distilled_2m.pt"
 PHASE4_SENSOR_CKPT  = CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
 FUSION_CKPT         = CKPT_DIR / "phase5_compressed_fusion_best.pt"
 

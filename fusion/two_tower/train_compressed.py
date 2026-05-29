@@ -3,7 +3,7 @@ Phase 5 — fusion with compressed image encoder (2M-param budget ResNet).
 
 Identical to train.py except:
   - Image encoder : pruned + distilled ResNet (1,980,200 params, 309-d features)
-                    loaded from checkpoints/resnet_distilled_budget.pt
+                    loaded from checkpoints/resnet_distilled_2m.pt
                     Standalone test MAE: 20.80 µm (FP32)
   - image_feat_dim: 309  (vs 512 for standard ResNet18)
   - Checkpoint   : checkpoints/phase5_compressed_fusion_best.pt
@@ -45,7 +45,7 @@ FEATURES_PATH   = ROOT / "data" / "processed" / "sensor_features_physics.parquet
 CKPT_DIR        = ROOT / "checkpoints"
 RESULTS_DIR     = Path(__file__).parent / "results_compressed"
 
-COMPRESSED_CKPT = CKPT_DIR / "resnet_distilled_budget.pt"
+COMPRESSED_CKPT = CKPT_DIR / "resnet_distilled_2m.pt"
 PHASE4_CKPT     = CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
 CKPT_PATH       = CKPT_DIR / "phase5_compressed_fusion_best.pt"
 

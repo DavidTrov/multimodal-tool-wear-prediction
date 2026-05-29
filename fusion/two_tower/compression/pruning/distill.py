@@ -58,7 +58,7 @@ CKPT_DIR      = ROOT / "checkpoints"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
 # Teacher checkpoint — pre-pruning compressed fusion (full state dict model)
-COMPRESSED_IMG_CKPT = CKPT_DIR / "resnet_distilled_budget.pt"
+COMPRESSED_IMG_CKPT = CKPT_DIR / "resnet_distilled_2m.pt"
 PHASE4_SENSOR_CKPT  = CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
 TEACHER_FUSION_CKPT = CKPT_DIR / "phase5_compressed_fusion_best.pt"
 IMAGE_FEAT_DIM      = 309
