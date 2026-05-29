@@ -1,9 +1,0 @@
-{
-  "alpha": 0.5,
-  "epochs": 40,
-  "val_mae_before": 70.06,
-  "val_mae_after": 42.99,
-  "n_params": 993186,
-  "int8_kb": 969.9,
-  "int4_kb": 485.0
-}

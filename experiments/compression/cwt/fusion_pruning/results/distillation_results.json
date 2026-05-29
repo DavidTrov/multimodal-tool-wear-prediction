@@ -1,8 +1,0 @@
-{
-  "alpha": 0.5,
-  "n_params": 1126695,
-  "int8_kb": 1100.3,
-  "val_mae_before_kd": 42.77,
-  "val_mae_after_kd": 42.77,
-  "checkpoint": "/Users/david/Projects/University/Maastricht University/Thesis/checkpoints/fusion_distilled.pt"
-}
