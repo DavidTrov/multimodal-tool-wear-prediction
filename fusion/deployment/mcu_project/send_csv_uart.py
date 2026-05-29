@@ -30,7 +30,7 @@ import serial
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from src.data.aircut_mask import cutting_mask, extract_cutting_signal
+from src.aircut_mask import cutting_mask, extract_cutting_signal
 
 SENSOR_COLS = ["acc", "acoustic", "fx", "fy", "fz"]
 ALL_COLS    = ["acc", "acoustic", "fx", "fy", "fz", "time"]

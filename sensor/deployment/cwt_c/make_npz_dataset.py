@@ -16,7 +16,7 @@ import pandas as pd
 from pathlib import Path
 import sys
 
-ROOT     = Path(__file__).resolve().parents[2]
+ROOT     = Path(__file__).resolve().parents[3]
 CALIB    = Path(__file__).parent / "calibration_data"
 LABELS   = ROOT / "data" / "raw" / "labels.csv"
 SCAL_DIR = ROOT / "data" / "processed" / "scalograms"

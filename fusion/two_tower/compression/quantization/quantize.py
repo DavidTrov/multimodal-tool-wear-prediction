@@ -33,8 +33,8 @@ from torch.utils.data import DataLoader
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
-from src.data.fusion_scalogram_dataset import MATWIFusionScalogramDataset
-from src.utils.metrics import mae
+from fusion.two_tower.dataset import MATWIFusionScalogramDataset
+from src.metrics import mae
 
 DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"

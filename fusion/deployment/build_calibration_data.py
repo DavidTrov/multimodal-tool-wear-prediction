@@ -36,7 +36,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.data.sensor_scalogram_dataset import MATWISensorScalogramDataset
+from sensor.cnn.dataset import MATWISensorScalogramDataset
 
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"

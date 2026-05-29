@@ -37,9 +37,9 @@ from torch.utils.data import DataLoader
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.data.scalogram_dataset import MATWIScalogramDataset
-from src.models.scalogram_fusion_model import ScalogramFusionModel
-from src.utils.metrics import mae
+from fusion.scalogram.dataset import MATWIScalogramDataset
+from fusion.scalogram.model import ScalogramFusionModel
+from src.metrics import mae
 
 # ── Config ────────────────────────────────────────────────────────────────────
 DATA_ROOT      = ROOT / "data" / "raw"

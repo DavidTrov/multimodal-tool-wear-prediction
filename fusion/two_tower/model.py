@@ -30,7 +30,7 @@ import torch
 import torch.nn as nn
 from torchvision.models import ResNet18_Weights, resnet18
 
-from src.models.multiscale_sensor_cnn import MultiScaleSensorCNN
+from sensor.multiscale.model import MultiScaleSensorCNN
 
 IMAGE_FEAT_DIM  = 512
 SENSOR_FEAT_DIM = 96   # MultiScaleSensorCNN features before head

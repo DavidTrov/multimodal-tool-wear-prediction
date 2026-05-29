@@ -21,9 +21,9 @@ from torch.utils.data import DataLoader
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.data.dataset import MATWIDataset
-from src.models.image_model import build_resnet18_regressor
-from src.utils.metrics import mae
+from image.baseline.dataset import MATWIDataset
+from image.baseline.model import build_resnet18_regressor
+from src.metrics import mae
 
 # ── Config ────────────────────────────────────────────────────────────────────
 DATA_ROOT   = ROOT / "data" / "raw"

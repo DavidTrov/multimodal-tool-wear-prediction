@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from src.data.dataset import MATWIDataset
+from image.baseline.dataset import MATWIDataset
 
 DATA_ROOT   = ROOT / "data" / "raw"
 CKPT_PATH   = ROOT / "checkpoints" / "distilled.pt"

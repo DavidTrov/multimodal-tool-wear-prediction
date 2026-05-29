@@ -31,15 +31,16 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from src.data.dataset import MATWIDataset, SPLIT_MAP
-from src.data.sensor_scalogram_dataset import MATWISensorScalogramDataset
-from src.data.fusion_scalogram_dataset import MATWIFusionScalogramDataset
-from src.models.image_model import build_resnet18_regressor
-from src.models.multiscale_sensor_cnn import MultiScaleSensorCNN
-from src.models.multiscale_fusion_model import MultiScaleFusionModel
+from src.config import SPLIT_MAP
+from image.baseline.dataset import MATWIDataset
+from sensor.cnn.dataset import MATWISensorScalogramDataset
+from fusion.two_tower.dataset import MATWIFusionScalogramDataset
+from image.baseline.model import build_resnet18_regressor
+from sensor.multiscale.model import MultiScaleSensorCNN
+from fusion.two_tower.model import MultiScaleFusionModel
 
 DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"

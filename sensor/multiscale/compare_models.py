@@ -33,11 +33,11 @@ import torch.nn as nn
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.data.dataset import MATWIDataset
-from src.data.sensor_scalogram_dataset import MATWISensorScalogramDataset
-from src.models.image_model import build_resnet18_regressor
-from src.models.multiscale_sensor_cnn import MultiScaleSensorCNN
-from src.models.sensor_cnn_model import SensorCNNRegressor
+from image.baseline.dataset import MATWIDataset
+from sensor.cnn.dataset import MATWISensorScalogramDataset
+from image.baseline.model import build_resnet18_regressor
+from sensor.multiscale.model import MultiScaleSensorCNN
+from sensor.cnn.model import SensorCNNRegressor
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 DATA_ROOT      = ROOT / "data" / "raw"
