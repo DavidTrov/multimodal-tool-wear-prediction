@@ -15,7 +15,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from src.data.dataset import SPLIT_MAP
+from src.config import SPLIT_MAP
 
 
 class MATWISensorScalogramDataset(Dataset):

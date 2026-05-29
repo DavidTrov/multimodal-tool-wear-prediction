@@ -18,7 +18,7 @@ import numpy as np
 import sys
 from pathlib import Path
 
-ROOT  = Path(__file__).resolve().parents[2]
+ROOT  = Path(__file__).resolve().parents[3]
 ONNX  = Path(__file__).parent / "sensor_cnn.onnx"
 SAVED = Path(__file__).parent / "sensor_cnn_tf_savedmodel"
 OUT   = Path(__file__).parent / "sensor_cnn_int8.tflite"

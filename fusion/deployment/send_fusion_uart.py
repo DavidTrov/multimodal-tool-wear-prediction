@@ -40,7 +40,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.data.aircut_mask import cutting_mask, extract_cutting_signal
+from src.aircut_mask import cutting_mask, extract_cutting_signal
 
 # ---------------------------------------------------------------------------
 # Constants

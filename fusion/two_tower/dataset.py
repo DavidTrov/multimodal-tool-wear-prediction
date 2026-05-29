@@ -24,7 +24,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from src.data.dataset import SPLIT_MAP, IMAGENET_MEAN, IMAGENET_STD
+from src.config import SPLIT_MAP, IMAGENET_MEAN, IMAGENET_STD
 
 
 def _parse_crop(crop_str: str) -> tuple:

@@ -9,7 +9,7 @@ import pandas as pd
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"

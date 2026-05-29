@@ -23,8 +23,8 @@ from torch.utils.data import DataLoader
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.models.multiscale_sensor_cnn import MultiScaleSensorCNN
-from src.data.sensor_scalogram_dataset import MATWISensorScalogramDataset
+from sensor.multiscale.model import MultiScaleSensorCNN
+from sensor.cnn.dataset import MATWISensorScalogramDataset
 
 try:
     from ai_edge_litert.interpreter import Interpreter as TFLiteInterpreter

@@ -53,7 +53,7 @@ warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.models.multiscale_sensor_cnn import MultiScaleSensorCNN
+from sensor.multiscale.model import MultiScaleSensorCNN
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 DEFAULT_CKPT  = ROOT / "checkpoints" / "best" / "phase4_multiscale_sgdm_best_25.pt"

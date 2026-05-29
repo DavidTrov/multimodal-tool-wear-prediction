@@ -35,10 +35,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from src.data.aircut_mask import cutting_mask, extract_cutting_signal
+from src.aircut_mask import cutting_mask, extract_cutting_signal
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 DATA_ROOT     = ROOT / "data" / "raw"

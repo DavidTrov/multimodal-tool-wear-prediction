@@ -37,9 +37,9 @@ from torch.utils.data import DataLoader
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
-from src.data.sensor_scalogram_dataset import MATWISensorScalogramDataset
-from src.models.multiscale_sensor_cnn import MultiScaleSensorCNN
-from src.utils.metrics import mae
+from sensor.cnn.dataset import MATWISensorScalogramDataset
+from sensor.multiscale.model import MultiScaleSensorCNN
+from src.metrics import mae
 
 DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"

@@ -5,7 +5,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from src.data.dataset import SPLIT_MAP, IMAGENET_MEAN, IMAGENET_STD, _parse_crop
+from src.config import SPLIT_MAP, IMAGENET_MEAN, IMAGENET_STD, _parse_crop
 
 _CHANNELS   = ["acc", "acoustic", "fx", "fy", "fz"]
 _TIME_FEATS = ["rms", "kurtosis", "crest_factor", "skewness", "shape_factor"]

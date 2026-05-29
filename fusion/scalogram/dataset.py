@@ -21,7 +21,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from src.data.dataset import SPLIT_MAP, IMAGENET_MEAN, IMAGENET_STD, _parse_crop
+from src.config import SPLIT_MAP, IMAGENET_MEAN, IMAGENET_STD, _parse_crop
 
 
 class MATWIScalogramDataset(Dataset):

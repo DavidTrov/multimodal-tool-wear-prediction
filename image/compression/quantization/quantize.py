@@ -36,11 +36,11 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from src.data.dataset import MATWIDataset
-from src.utils.metrics import mae
+from image.baseline.dataset import MATWIDataset
+from src.metrics import mae
 
 DATA_ROOT   = ROOT / "data" / "raw"
 CKPT_DIR    = ROOT / "checkpoints"

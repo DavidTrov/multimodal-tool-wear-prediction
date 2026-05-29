@@ -3,9 +3,9 @@ import onnx
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
-from src.models.multiscale_sensor_cnn import MultiScaleSensorCNN
+from sensor.multiscale.model import MultiScaleSensorCNN
 
 CKPT = ROOT / "checkpoints" / "best" / "phase4_multiscale_sgdm_best_25.pt"
 OUT  = ROOT / "experiments" / "cwt_c" / "sensor_cnn.onnx"
