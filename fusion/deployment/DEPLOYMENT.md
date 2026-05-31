@@ -18,7 +18,7 @@
    - 3.3 [ONNX preprocessing: static shapes + axes dedup](#33-onnx-preprocessing-static-shapes--axes-dedup)
    - 3.4 [ONNX → TFLite via NXP onnx2tflite](#34-onnx--tflite-via-nxp-onnx2tflite)
    - 3.5 [Accuracy validation and reproducible scripts](#35-accuracy-validation-and-reproducible-scripts)
-   - 3.6 [Deployment caveat: GELU / FlexErf](#36-deployment-caveat-gelu--flexerf)
+   - 3.6 [GELU → tanh swap (resolved: no FlexErf)](#36-gelu--tanh-swap-resolved-no-flexerf)
    - 3.7 [TFLite → C header (xxd)](#37-tflite--c-header-xxd)
 4. [Memory Budget and Layout](#4-memory-budget-and-layout)
    - 4.1 [MCXN947 memory map](#41-mcxn947-memory-map)
@@ -110,14 +110,21 @@ Because kiss_fft is already inside `tflm_lib`, **do not add `kiss_fft.c` to your
 
 ## 3. Model Conversion Pipeline
 
-> **Important — firmware sections below describe the earlier model.** Sections 5–12
-> (host script, op resolver, NHWC layout, INT8 I/O, memory budget) were written
-> against the first conversion attempt (onnx2tf, `full_integer_quant`, INT8 NHWC
-> I/O). That path was **abandoned** — it drifts to 68 µm (§3.2). The current
-> deployable model (`fusion_int8_qat_nxp.tflite`) keeps **FP32 NCHW** I/O and is
-> lossless. The firmware sections must be revisited (input dtype = float32, no
-> NHWC transpose, op list now includes GELU) once the GELU→tanh swap in §3.6
-> lands. Section 3 below is the authoritative, current conversion procedure.
+> **Important — two TFLite artifacts exist; deploy the INT8-I/O one.** Section 3
+> below is the authoritative, current conversion procedure. It produces two files:
+>
+> | File | I/O | Op set | Use |
+> |------|-----|--------|-----|
+> | `fusion_int8_qat_nxp.tflite`    | FP32 NCHW | native (TANH) | desktop validation only — 602 KB FP32 image > 512 KB SRAM |
+> | `fusion_int8_qat_nxp_io.tflite` | **INT8 NCHW** | native (TANH) | **MCU deployment** — 147 KB image input, TFLM-native |
+>
+> Both are lossless vs the INT8 ONNX (test **20.33 µm**). The GELU→tanh swap
+> (§3.6) removed all FlexErf ops, and the INT8-I/O boundary surgery (§3.5) made the
+> model fit SRAM — so the two prior blockers are resolved. Firmware sections 5–12
+> were written against the **abandoned** onnx2tf path (NHWC INT8 I/O, drifts to
+> 68 µm, §3.2); when revisiting them, note the current model is **NCHW INT8 I/O**
+> (no NHWC transpose) with a **TANH** op (no GELU/Erf), and the host applies the
+> per-tensor scales in `fusion_int8_qat_nxp_io.io_quant.json`.
 
 ### 3.1 Model lineage: 2M two-tower → INT8 ONNX
 
@@ -255,80 +262,108 @@ onnx2tflite \
     <patched_static_dedup>.onnx
 ```
 
-The whole stage is wrapped in one script:
+The whole stage is wrapped in one script. It produces **two** TFLite files:
 
 ```bash
+# (a) FP32 NCHW I/O — desktop validation reference
 python fusion/two_tower/compression/static_quant/convert_tflite_nxp.py
-# Patched model: batch=1, deduplicated 3 Reduce* axes -> INT64
-# Output : fusion_int8_qat_nxp.tflite  (1189 KB, fits 2 MB flash: True)
+# Output : fusion_int8_qat_nxp.tflite     (1192 KB, fits 2 MB flash: True)
+
+# (b) full-integer INT8 I/O — the MCU-deployable model
+python fusion/two_tower/compression/static_quant/convert_tflite_nxp.py --int8-io \
+       --output fusion/deployment/checkpoints/fusion_int8_qat_nxp_io.tflite
+# INT8 I/O surgery: image scale=0.02078740  scalogram scale=0.00787402  output scale=1.30908048
+# Output : fusion_int8_qat_nxp_io.tflite  (1192 KB, fits 2 MB flash: True)
 ```
 
-The resulting TFLite has **FP32 NCHW I/O with INT8 internals** (QUANTIZE at the
-input, DEQUANTIZE at the output, INT8 weights + activations throughout):
+Variant (a) keeps **FP32 NCHW I/O with INT8 internals** (QUANTIZE at the input,
+DEQUANTIZE at the output). It is fed *exactly* like the ONNX, which makes its
+accuracy match byte-faithful — but the 224×224×3 FP32 image input is 602 KB,
+over the 512 KB SRAM ceiling, so it is a **validation artifact only**.
+
+Variant (b) strips the boundary Quantize/Dequantize nodes (`--int8-io`,
+`strip_io_qdq()` in `convert_tflite_nxp.py`) so the graph I/O is INT8:
 
 ```
-INPUT   image       [1, 3, 224, 224]  float32
-INPUT   scalogram   [1, 5, 64, 64]    float32
-OUTPUT  wear_depth_um [1, 1]          float32
+INPUT   image       [1, 3, 224, 224]  int8   scale 0.02078740  zp 0   (147 KB)
+INPUT   scalogram   [1, 5, 64, 64]    int8   scale 0.00787402  zp 0
+OUTPUT  wear_depth_um [1, 1]          int8   scale 1.30908048  zp 0
 ```
 
-Keeping FP32 NCHW I/O (rather than INT8 NHWC) means the TFLite is fed *exactly*
-like the ONNX — no boundary quantization, no NHWC transpose — which is why the
-accuracy match in §3.5 is byte-faithful.
+The per-tensor scales are written to `fusion_int8_qat_nxp_io.io_quant.json`. The
+host (or MCU firmware) applies them directly:
+
+```
+quantize input :  q = clip(round(x / scale) + zero_point, -128, 127)
+dequantize out :  y = (q_out - zero_point) * scale
+```
+
+The INT8 image input (147 KB) fits SRAM with room to spare, so variant (b) is the
+on-device model.
 
 ### 3.5 Accuracy validation and reproducible scripts
 
 ```bash
+# FP32-I/O variant (full TF runtime)
 python fusion/two_tower/compression/static_quant/eval_tflite_nxp.py
-# val    n=300  MAE=40.10 ± 59.33 µm
-# test   n=247  MAE=20.63 ± 20.14 µm
+# val 40.52 ± 59.88 µm   test 20.33 ± 20.43 µm
+
+# INT8-I/O variant (host applies the quant params above)
+python fusion/two_tower/compression/static_quant/eval_tflite_int8_io.py
+# val 40.52 ± 59.88 µm   test 20.33 ± 20.43 µm
 ```
 
-| Model | val MAE | test MAE | Size |
-|---|---|---|---|
-| `fusion_int8_qat.onnx` (source) | 40.15 | **20.63 µm** | 1554 KB |
-| **`fusion_int8_qat_nxp.tflite`** (NXP, deployable) | 40.10 | **20.63 µm** | **1189 KB** ✓ |
-| onnx2tf `integer_quant` (Path A, abandoned) | 84.24 | 68.17 µm | — |
+| Model | val MAE | test MAE | I/O | Size |
+|---|---|---|---|---|
+| `fusion_int8_qat.onnx` (source) | 40.33 | **20.52 µm** | FP32 NCHW | 1572 KB |
+| `fusion_int8_qat_nxp.tflite` (validation) | 40.52 | **20.33 µm** | FP32 NCHW | 1192 KB |
+| **`fusion_int8_qat_nxp_io.tflite`** (deployable) | 40.52 | **20.33 µm** | **INT8 NCHW** | **1192 KB** ✓ |
+| onnx2tf `integer_quant` (Path A, abandoned) | 84.24 | 68.17 µm | INT8 NHWC | — |
 
-Test MAE matches the source ONNX to **0.01 µm**; the 0.05 µm val difference is
-floating-point rounding on the high-variance val split. The conversion is lossless.
+All three Path-B rows agree to FP rounding; the INT8-I/O host arithmetic exactly
+reproduces the folded boundary Q/DQ. The conversion is lossless.
 
 **Scripts (all under `fusion/two_tower/compression/static_quant/`):**
 
 | Script | Role |
 |---|---|
-| `export_onnx.py` | Stage 3 — distilled QAT `.pt` → INT8 QDQ ONNX |
+| `export_onnx.py` | Stage 3 — distilled QAT `.pt` → INT8 QDQ ONNX (swaps GELU→tanh) |
+| `check_gelu_swap.py` | Verify the GELU→tanh swap is accuracy-neutral in PyTorch |
 | `eval_onnx.py` | Evaluate any FP32/INT8 ONNX via ONNX Runtime |
-| `convert_tflite_nxp.py` | Stage 4 — patch ONNX + `onnx2tflite --qdq-aware-conversion` |
-| `eval_tflite_nxp.py` | Evaluate the NXP TFLite (full TF runtime; needs FlexErf) |
-| `results/nxp_tflite_results.json` | Recorded accuracy + caveats |
+| `convert_tflite_nxp.py` | Stage 4 — patch ONNX + `onnx2tflite` (`--int8-io` for INT8 I/O) |
+| `eval_tflite_nxp.py` | Evaluate the FP32-I/O TFLite (full TF runtime) |
+| `eval_tflite_int8_io.py` | Evaluate the INT8-I/O TFLite (host quant/dequant) |
+| `results/nxp_tflite_results.json` | Recorded accuracy + deployability |
 | ~~`convert_tflite.py`~~ | ~~Old onnx2tf path — superseded (kept for reference)~~ |
 
-### 3.6 Deployment caveat: GELU / FlexErf
+### 3.6 GELU → tanh swap (resolved: no FlexErf)
 
-The fusion head's **GELU** activations export an `Erf` op for which TFLite has no
-native kernel, so `onnx2tflite` emits **3 `FlexErf` (TF Select)** ops. These run
-fine under the desktop TensorFlow interpreter (how §3.5 validates) but are **not
-supported by TFLite-Micro** on the MCXN947 — `ai_edge_litert` / TFLM cannot
-allocate them.
+The fusion head originally used the default **GELU**, which exports an `Erf` op
+that TFLite has no native kernel for — `onnx2tflite` emitted **3 `FlexErf`
+(TF Select)** ops that run under desktop TensorFlow but **not** under TFLite-Micro.
 
-This does **not** affect the QDQ translation accuracy; it is purely an op-support
-issue. The fix for bare-metal deployment is to **retrain with a tanh-approximation
-GELU** (`nn.GELU(approximate="tanh")`), which lowers to a native `TANH` op, then
-re-run stages 3–4. Until that lands, `fusion_int8_qat_nxp.tflite` is validated and
-flash-fitting but runs only under the desktop runtime, not on-device.
+The fix is now applied in source: all three GELUs (`img_proj`, `sen_proj`, `head`
+in `fusion/two_tower/model.py`) use `nn.GELU(approximate="tanh")`, which lowers to
+a native `TANH`. `export_onnx.py` also applies the swap defensively at load time
+(`swap_gelu_to_tanh()`), since the distilled checkpoint is a pickled object.
+
+The swap is **accuracy-neutral** — tanh-GELU and erf-GELU differ by ~3×10⁻⁴ on the
+tiny post-LayerNorm projection vectors, and `check_gelu_swap.py` confirms the
+PyTorch test MAE is identical (20.48 µm) before and after. The re-exported graph
+has `Erf=0, Tanh=3`, and the TFLite op set is now **native-only** (no Flex ops).
 
 > GroupNorm decomposes cleanly into native ops (MEAN / SQUARED_DIFFERENCE / RSQRT /
-> SUB / MUL — 31 MEAN nodes), so it is **not** a blocker. `Erf` is the only
-> non-native op in the graph.
+> SUB / MUL), so it was never a blocker. `Erf` was the only non-native op, and the
+> tanh swap removes it.
 
 ### 3.7 TFLite → C header (xxd)
 
-Once the model is TFLM-native (post-§3.6 GELU swap), embed it as a flash array:
+Embed the deployable INT8-I/O model (`fusion_int8_qat_nxp_io.tflite`) as a flash
+array:
 
 ```bash
 # From the thesis root:
-xxd -i fusion/deployment/checkpoints/fusion_int8_qat_nxp.tflite \
+xxd -i fusion/deployment/checkpoints/fusion_int8_qat_nxp_io.tflite \
     > fusion/deployment/mcu_project/fusion_model_data.h
 
 # Rename identifiers to match the firmware:

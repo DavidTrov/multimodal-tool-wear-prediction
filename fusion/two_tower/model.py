@@ -73,19 +73,19 @@ class MultiScaleFusionModel(nn.Module):
         self.img_proj = nn.Sequential(
             nn.Linear(image_feat_dim, 128),
             nn.LayerNorm(128),
-            nn.GELU(),
+            nn.GELU(approximate="tanh"),  # tanh approx lowers to native TFLite TANH (no FlexErf)
         )
         self.sen_proj = nn.Sequential(
             nn.Linear(SENSOR_FEAT_DIM, 128),
             nn.LayerNorm(128),
-            nn.GELU(),
+            nn.GELU(approximate="tanh"),  # tanh approx lowers to native TFLite TANH (no FlexErf)
         )
 
         # ── Fusion head ────────────────────────────────────────────────────────
         self.head = nn.Sequential(
             nn.Dropout(0.2),
             nn.Linear(256, 64),
-            nn.GELU(),
+            nn.GELU(approximate="tanh"),  # tanh approx lowers to native TFLite TANH (no FlexErf)
             nn.Linear(64, 1),
         )
 
