@@ -1,0 +1,42 @@
+{
+  "model_ckpt": "fusion/two_tower/compression/pruning/checkpoints/fusion_distilled_qat.pt",
+  "fp32_onnx": "/Users/david/Projects/University/Maastricht University/Thesis/fusion/deployment/checkpoints/fusion_fp32_qat.onnx",
+  "int8_onnx": "/Users/david/Projects/University/Maastricht University/Thesis/fusion/deployment/checkpoints/fusion_int8_qat.onnx",
+  "opset_version": 18,
+  "calib_samples": 200,
+  "n_params": 1126695,
+  "fp32_onnx_kb": 369.4,
+  "int8_onnx_kb": 1554.0,
+  "fp32": {
+    "val_mae": 39.87,
+    "val_std": 57.54,
+    "test_mae": 20.48,
+    "test_std": 19.35
+  },
+  "int8": {
+    "val_mae": 40.15,
+    "val_std": 59.39,
+    "test_mae": 20.63,
+    "test_std": 20.21
+  },
+  "accuracy_drop": {
+    "val": 0.28,
+    "test": 0.15
+  },
+  "ram": {
+    "dynamic_quant_fp32_acts": {
+      "img_kb": 588.0,
+      "conv1_kb": 637.0,
+      "peak_kb": 1289.0,
+      "budget_kb": 512,
+      "fits": false
+    },
+    "static_quant_int8_acts": {
+      "img_kb": 147.0,
+      "conv1_kb": 159.2,
+      "peak_kb": 370.2,
+      "budget_kb": 512,
+      "fits": true
+    }
+  }
+}

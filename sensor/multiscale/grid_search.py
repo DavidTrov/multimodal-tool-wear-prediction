@@ -6,11 +6,11 @@ Val MAE is recorded at every epoch so the best epoch is found per config.
 Uses the original paper train/val/test split (sets unchanged).
 
 Run from the thesis root:
-    python experiments/phase4_sensor_cnn/grid_search.py
+    python sensor/multiscale/grid_search.py
 
 Saves:
-    results/grid_search.json          — all configs + best config
-    checkpoints/phase4_gs_best.pt     — weights for the best config
+    sensor/multiscale/results/grid_search.json   — all configs + best config
+    sensor/multiscale/checkpoints/phase4_gs_best.pt — weights for the best config
 """
 
 import json
@@ -33,7 +33,7 @@ from src.metrics import mae
 # ── Paths ─────────────────────────────────────────────────────────────────────
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR      = ROOT / "checkpoints"
+CKPT_DIR      = Path(__file__).parent / "checkpoints"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
 BEST_CKPT = CKPT_DIR / "phase4_gs_best.pt"

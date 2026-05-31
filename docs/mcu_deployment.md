@@ -119,9 +119,15 @@ Total SRAM:                              ~445 KB < 512 KB ✓
 
 ### Selected model
 
-`checkpoints/best/phase4_multiscale_sgdm_best_25.pt` —
+`sensor/multiscale/checkpoints/phase4_multiscale_sgdm_best_25.pt` —
 MultiScaleSensorCNN with CBAM attention, ResBlock, GroupNorm(8), trained with
 SGDM (momentum 0.9, weight_decay 5e-3), HuberLoss(δ=20). 244,463 parameters.
+
+> **Note (post-restructure):** the epoch-tagged `_25` checkpoint was pruned during
+> the repo reorganisation; the surviving training checkpoint is
+> `sensor/multiscale/checkpoints/phase4_multiscale_sgdm_best.pt`. The already-exported
+> ONNX/TFLite artifacts under `sensor/deployment/onnx/` (named `..._25_...`) were
+> produced from that `_25` snapshot and remain the deployment source of truth.
 
 ---
 
@@ -136,7 +142,7 @@ NPU — not the MCXN947 Neutron NPU. The correct pipeline uses three sequential
 ```
 PyTorch (.pt)
     │
-    ▼  torch.onnx.export()                 [experiments/phase6_deployment/export_onnx.py]
+    ▼  torch.onnx.export()                 [fusion/deployment/export_onnx.py]
 ONNX FP32 (.onnx, opset 13)
     │
     ▼  onnx2quant  (NXP eiq-onnx2tflite)   [pip install from GitHub release]
@@ -158,11 +164,11 @@ pip install https://github.com/NXP/eiq-onnx2tflite/releases/download/0.10.0/eiq_
 
 ## Step 1 — Export to ONNX
 
-**Script:** `experiments/phase6_deployment/export_onnx.py`
+**Script:** `fusion/deployment/export_onnx.py`
 
 ```bash
-python experiments/phase6_deployment/export_onnx.py
-# Output: checkpoints/onnx/phase4_multiscale_sgdm_best_25_op13.onnx
+python fusion/deployment/export_onnx.py
+# Output: sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_op13.onnx
 ```
 
 ### Key decisions
@@ -216,18 +222,18 @@ All are standard ONNX ops fully supported by `onnx2quant` and `onnx2tflite`.
 
 ### Output
 
-`checkpoints/onnx/phase4_multiscale_sgdm_best_25_op13.onnx` — 978 KB,
+`sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_op13.onnx` — 978 KB,
 self-contained (no `.onnx.data` sidecar).
 
 ---
 
 ## Step 2 — Build Calibration Dataset
 
-**Script:** `experiments/phase6_deployment/build_calibration_data.py`
+**Script:** `fusion/deployment/build_calibration_data.py`
 
 ```bash
-python experiments/phase6_deployment/build_calibration_data.py
-# Output: experiments/phase6_deployment/calibration_data/  (100 × .npy files)
+python fusion/deployment/build_calibration_data.py
+# Output: fusion/deployment/calibration_data/  (100 × .npy files)
 ```
 
 ### Why calibration matters
@@ -270,10 +276,10 @@ high-wear regime where predictions are most critical.
 
 ```bash
 python -m onnx2quant \
-  checkpoints/onnx/phase4_multiscale_sgdm_best_25_op13.onnx \
-  -c "scalogram;experiments/phase6_deployment/calibration_data/" \
+  sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_op13.onnx \
+  -c "scalogram;fusion/deployment/calibration_data/" \
   --per-channel \
-  -o checkpoints/onnx/phase4_multiscale_sgdm_best_25_op13_int8.onnx
+  -o sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_op13_int8.onnx
 ```
 
 ### What ONNX2Quant does
@@ -315,10 +321,10 @@ degradation.
 
 ```bash
 python -m onnx2tflite \
-  checkpoints/onnx/phase4_multiscale_sgdm_best_25_op13_int8.onnx \
+  sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_op13_int8.onnx \
   --qdq-aware-conversion \
   --keep-io-tensors-format \
-  -o checkpoints/onnx/phase4_multiscale_sgdm_best_25_int8.tflite
+  -o sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_int8.tflite
 ```
 
 ### Flags explained
@@ -352,7 +358,7 @@ reshapes.
 
 ### Output
 
-`checkpoints/onnx/phase4_multiscale_sgdm_best_25_int8.tflite` — **308 KB**,
+`sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_int8.tflite` — **308 KB**,
 float32 input/output, NCHW layout.
 
 The warnings about "re-quantizing tensors to match Concat output q-params" are
@@ -387,7 +393,7 @@ The validated TFLite model is embedded in the MCUXpresso project as a C
 the `.rodata` section — the model bytes are never copied to SRAM.
 
 ```bash
-cd checkpoints/onnx
+cd sensor/deployment/onnx
 xxd -i phase4_multiscale_sgdm_best_25_int8.tflite \
     > phase4_multiscale_sgdm_best_25_model_data.h
 ```
@@ -414,7 +420,7 @@ math via CMSIS-NN automatically). Estimated inference time: **~15 ms**.
 ## Step 6 — MCUXpresso Project
 
 The full application source lives in
-`experiments/phase6_deployment/mcu_project/`.  Four files are complete and
+`fusion/deployment/mcu_project/`.  Four files are complete and
 ready to be added to an MCUXpresso managed-build project or compiled via the
 provided `CMakeLists.txt`:
 
@@ -510,8 +516,8 @@ Do **not** define `DESKTOP_SHIM` — `cwt_mcu.c` then includes the real
    - *LPUART driver* + *Debug Console*
 3. **Copy source files** into the project:
    - `main.c`, `sensor_pipeline.h`, `sensor_pipeline.cpp`
-   - `cwt_mcu.c`, `cwt_mcu.h`  (from `experiments/cwt_c/`)
-   - `phase4_multiscale_sgdm_best_25_model_data.h`  (from `checkpoints/onnx/`)
+   - `cwt_mcu.c`, `cwt_mcu.h`  (from `sensor/deployment/cwt_c/`)
+   - `phase4_multiscale_sgdm_best_25_model_data.h`  (from `sensor/deployment/onnx/`)
 4. **Set build flags** (above) in project Properties → C/C++ Build → Settings
 5. **Build** → should produce `tool_wear.axf` under `Debug/` or `Release/`
 6. **Flash** via *Run → Debug* (J-Link on-board) or `pyocd flash -t mcxn947`
@@ -520,7 +526,7 @@ Do **not** define `DESKTOP_SHIM` — `cwt_mcu.c` then includes the real
 
 ```bash
 # On host machine — connect FRDM-MCXN947 via USB
-python experiments/phase6_deployment/mcu_project/send_csv_uart.py \
+python fusion/deployment/mcu_project/send_csv_uart.py \
     --port /dev/tty.usbmodemXXXX \
     --csv  data/raw/Set4/sensordata/<recording>.csv \
     --baud 115200
@@ -567,7 +573,7 @@ The slight improvement (−0.21 µm) is within evaluation noise.
 
 ### TFLite INT8 per-sample validation
 
-`experiments/phase6_deployment/validate_tflite.py` runs both models on the
+`fusion/deployment/validate_tflite.py` runs both models on the
 same inputs and compares predictions sample-by-sample. Results on the test
 split (247 samples):
 
@@ -586,7 +592,7 @@ of wear). This is a known effect of symmetric INT8 quantization on regression
 outputs and is well within the 5 µm acceptance threshold. The 0.9983
 correlation confirms the ranking of samples is virtually identical to FP32.
 
-Results saved to `experiments/phase6_deployment/results/validate_tflite_results.json`.
+Results saved to `fusion/deployment/results/validate_tflite_results.json`.
 
 **Model size progression:**
 
@@ -657,7 +663,7 @@ below 102 ms.
 
 ```bash
 docker run -it --rm \
-  -v "$(pwd)/checkpoints/onnx:/models" \
+  -v "$(pwd)/sensor/deployment/onnx:/models" \
   ubuntu:22.04 bash
 
 # Inside container — download eIQ Toolkit Linux installer from
@@ -687,13 +693,13 @@ jobs:
       - name: Run Neutron Converter
         run: |
           neutron-converter \
-            --input  checkpoints/onnx/phase4_multiscale_sgdm_best_25_int8.tflite \
-            --output checkpoints/onnx/phase4_multiscale_sgdm_best_25_npu.tflite \
+            --input  sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_int8.tflite \
+            --output sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_npu.tflite \
             --target imxrt700 --dump-header-file-output
       - uses: actions/upload-artifact@v4
         with:
           name: npu-model
-          path: checkpoints/onnx/phase4_multiscale_sgdm_best_25_npu.*
+          path: sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_npu.*
 ```
 
 **Option C — Native Windows/Linux machine**: run the commands from the
@@ -762,22 +768,22 @@ the deployment branch is the cleanest fix.
 
 | File | Purpose | Status |
 |---|---|---|
-| `experiments/cwt_c/cwt_mcu.c` | CWT preprocessing (CMSIS-DSP) | ✅ Complete, validated 50/50 |
-| `experiments/cwt_c/cwt_mcu.h` | CWT public API | ✅ Complete |
-| `experiments/cwt_c/cmsis_shim.h` | Desktop compatibility layer | ✅ Complete |
-| `experiments/cwt_c/main_mcu.c` | Desktop CLI wrapper for CWT | ✅ Complete |
-| `experiments/cwt_c/validate_mcu.py` | CWT validation vs Python reference | ✅ 50/50 pass |
-| `experiments/phase6_deployment/export_onnx.py` | PyTorch → ONNX export | ✅ Complete |
-| `experiments/phase6_deployment/build_calibration_data.py` | Calibration dataset (100 samples) | ✅ Complete |
-| `experiments/phase6_deployment/validate_tflite.py` | Per-sample TFLite vs PyTorch validation | ✅ PASS (MAE delta 0.21 µm) |
-| `checkpoints/onnx/phase4_multiscale_sgdm_best_25_op13.onnx` | FP32 ONNX (opset 13) | ✅ 978 KB |
-| `checkpoints/onnx/phase4_multiscale_sgdm_best_25_op13_int8.onnx` | INT8 QDQ ONNX | ✅ 421 KB |
-| `checkpoints/onnx/phase4_multiscale_sgdm_best_25_int8.tflite` | TFLite INT8 | ✅ 308 KB |
-| `checkpoints/onnx/phase4_multiscale_sgdm_best_25_model_data.h` | Model as C array for flash (CPU) | ✅ Generated via xxd |
-| `experiments/phase6_deployment/mcu_project/sensor_pipeline.h` | CWT + TFLite Micro pipeline — plain-C API | ✅ Complete |
-| `experiments/phase6_deployment/mcu_project/sensor_pipeline.cpp` | Pipeline implementation — 19-op resolver, placement-new | ✅ Complete |
-| `experiments/phase6_deployment/mcu_project/main.c` | FRDM-MCXN947 entry point — UART CSV receive + orchestration | ✅ Complete |
-| `experiments/phase6_deployment/mcu_project/send_csv_uart.py` | Host script — cutting mask + UART streaming | ✅ Complete |
-| `experiments/phase6_deployment/mcu_project/CMakeLists.txt` | CMake build (arm-none-eabi-gcc, pyOCD/J-Link targets) | ✅ Complete |
-| `checkpoints/onnx/phase4_multiscale_sgdm_best_25_npu.tflite` | NPU-compiled TFLite | ⏳ Step 7 — requires eIQ Toolkit on Linux/Windows |
-| `checkpoints/onnx/phase4_multiscale_sgdm_best_25_npu.h` | NPU model as C array | ⏳ Step 7 — generated by Neutron Converter |
+| `sensor/deployment/cwt_c/cwt_mcu.c` | CWT preprocessing (CMSIS-DSP) | ✅ Complete, validated 50/50 |
+| `sensor/deployment/cwt_c/cwt_mcu.h` | CWT public API | ✅ Complete |
+| `sensor/deployment/cwt_c/cmsis_shim.h` | Desktop compatibility layer | ✅ Complete |
+| `sensor/deployment/cwt_c/main_mcu.c` | Desktop CLI wrapper for CWT | ✅ Complete |
+| `sensor/deployment/cwt_c/validate_mcu.py` | CWT validation vs Python reference | ✅ 50/50 pass |
+| `fusion/deployment/export_onnx.py` | PyTorch → ONNX export | ✅ Complete |
+| `fusion/deployment/build_calibration_data.py` | Calibration dataset (100 samples) | ✅ Complete |
+| `fusion/deployment/validate_tflite.py` | Per-sample TFLite vs PyTorch validation | ✅ PASS (MAE delta 0.21 µm) |
+| `sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_op13.onnx` | FP32 ONNX (opset 13) | ✅ 978 KB |
+| `sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_op13_int8.onnx` | INT8 QDQ ONNX | ✅ 421 KB |
+| `sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_int8.tflite` | TFLite INT8 | ✅ 308 KB |
+| `sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_model_data.h` | Model as C array for flash (CPU) | ✅ Generated via xxd |
+| `fusion/deployment/mcu_project/sensor_pipeline.h` | CWT + TFLite Micro pipeline — plain-C API | ✅ Complete |
+| `fusion/deployment/mcu_project/sensor_pipeline.cpp` | Pipeline implementation — 19-op resolver, placement-new | ✅ Complete |
+| `fusion/deployment/mcu_project/main.c` | FRDM-MCXN947 entry point — UART CSV receive + orchestration | ✅ Complete |
+| `fusion/deployment/mcu_project/send_csv_uart.py` | Host script — cutting mask + UART streaming | ✅ Complete |
+| `fusion/deployment/mcu_project/CMakeLists.txt` | CMake build (arm-none-eabi-gcc, pyOCD/J-Link targets) | ✅ Complete |
+| `sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_npu.tflite` | NPU-compiled TFLite | ⏳ Step 7 — requires eIQ Toolkit on Linux/Windows |
+| `sensor/deployment/onnx/phase4_multiscale_sgdm_best_25_npu.h` | NPU model as C array | ⏳ Step 7 — generated by Neutron Converter |

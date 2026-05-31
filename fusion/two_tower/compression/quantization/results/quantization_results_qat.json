@@ -1,0 +1,23 @@
+{
+  "model_ckpt": "fusion/two_tower/compression/pruning/checkpoints/fusion_distilled_qat.pt",
+  "n_params_total": 1126695,
+  "n_params_image_encoder": 971704,
+  "n_params_sensor_cnn": 133517,
+  "n_params_fusion_head": 21474,
+  "fp32_kb": 4401.2,
+  "int8_kb": 1100.3,
+  "target_kb": 2048,
+  "fits_in_flash": true,
+  "fp32": {
+    "val_mae": 39.87,
+    "test_mae": 20.48
+  },
+  "int8": {
+    "val_mae": 39.88,
+    "test_mae": 20.47
+  },
+  "int8_accuracy_drop": {
+    "val": 0.01,
+    "test": -0.01
+  }
+}

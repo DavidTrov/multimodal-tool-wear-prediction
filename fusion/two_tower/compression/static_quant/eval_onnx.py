@@ -1,11 +1,18 @@
 """
-Evaluate a saved ONNX model (FP32 or INT8) on val and test splits.
+Evaluate a saved ONNX fusion model (FP32 or INT8) on val and test splits.
 
 Usage
 -----
-    python experiments/compression/cwt/phase4_static_quant/eval_onnx.py
-    python experiments/compression/cwt/phase4_static_quant/eval_onnx.py --model checkpoints/fusion_int8.onnx
-    python experiments/compression/cwt/phase4_static_quant/eval_onnx.py --model checkpoints/fusion_fp32.onnx --split test
+    # Default: INT8 ONNX in deployment checkpoints
+    python fusion/two_tower/compression/static_quant/eval_onnx.py
+
+    # QAT variant
+    python fusion/two_tower/compression/static_quant/eval_onnx.py \\
+        --model fusion/deployment/checkpoints/fusion_int8_qat.onnx
+
+    # Specific split
+    python fusion/two_tower/compression/static_quant/eval_onnx.py \\
+        --model fusion/deployment/checkpoints/fusion_fp32.onnx --split test
 
 Run from the thesis root.
 """
@@ -23,10 +30,10 @@ sys.path.insert(0, str(ROOT))
 
 from fusion.two_tower.dataset import MATWIFusionScalogramDataset
 
-DATA_ROOT     = ROOT / "data" / "raw"
-SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
-FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR      = ROOT / "checkpoints"
+DATA_ROOT        = ROOT / "data" / "raw"
+SCALOGRAM_DIR    = ROOT / "data" / "processed" / "scalograms"
+FEATURES_PATH    = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
+DEPLOY_CKPT_DIR  = ROOT / "fusion" / "deployment" / "checkpoints"
 
 BATCH_SIZE  = 16
 NUM_WORKERS = 0
@@ -83,8 +90,8 @@ def run(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate an ONNX fusion model")
     parser.add_argument(
-        "--model", default=str(CKPT_DIR / "fusion_int8.onnx"),
-        help="Path to ONNX model (default: checkpoints/fusion_int8.onnx)",
+        "--model", default=str(DEPLOY_CKPT_DIR / "fusion_int8.onnx"),
+        help="Path to ONNX model (default: fusion/deployment/checkpoints/fusion_int8.onnx)",
     )
     parser.add_argument(
         "--split", default="both", choices=["val", "test", "both"],

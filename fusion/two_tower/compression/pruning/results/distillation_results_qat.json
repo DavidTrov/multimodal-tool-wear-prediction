@@ -1,0 +1,8 @@
+{
+  "alpha": 0.5,
+  "n_params": 1126695,
+  "int8_kb": 1100.3,
+  "val_mae_before_kd": 43.85,
+  "val_mae_after_kd": 39.87,
+  "checkpoint": "/Users/david/Projects/University/Maastricht University/Thesis/fusion/two_tower/compression/pruning/checkpoints/fusion_distilled_qat.pt"
+}

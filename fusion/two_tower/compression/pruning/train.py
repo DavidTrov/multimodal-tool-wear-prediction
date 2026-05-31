@@ -42,10 +42,10 @@ Pipeline
 
 Usage
 -----
-    python experiments/compression/cwt/fusion_pruning/train.py
-    python experiments/compression/cwt/fusion_pruning/train.py --sparsity 0.5
-    python experiments/compression/cwt/fusion_pruning/train.py --skip-sensitivity
-    python experiments/compression/cwt/fusion_pruning/train.py --sparsity 0.7 \\
+    python fusion/two_tower/compression/pruning/train.py
+    python fusion/two_tower/compression/pruning/train.py --sparsity 0.5
+    python fusion/two_tower/compression/pruning/train.py --skip-sensitivity
+    python fusion/two_tower/compression/pruning/train.py --sparsity 0.7 \\
         --output-suffix _70
 
 Run from the thesis root.
@@ -71,12 +71,15 @@ from src.metrics import mae
 DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR      = ROOT / "checkpoints"
-RESULTS_DIR   = Path(__file__).parent / "results"
+CKPT__SENSOR_DIR = ROOT / "sensor" / "multiscale" / "checkpoints"
+CKPT__IMAGE_DIR  = ROOT / "image" / "compression" / "checkpoints"
+CKPT__FUSION_DIR = ROOT / "fusion" / "two_tower" / "checkpoints"
+CKPT_DIR         = Path(__file__).parent / "checkpoints"   # output dir for pruned models
+RESULTS_DIR      = Path(__file__).parent / "results"
 
-COMPRESSED_IMG_CKPT = CKPT_DIR / "resnet_distilled_2m.pt"
-PHASE4_SENSOR_CKPT  = CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
-FUSION_CKPT         = CKPT_DIR / "phase5_compressed_fusion_best.pt"
+COMPRESSED_IMG_CKPT = CKPT__IMAGE_DIR  / "resnet_qat_int8_2m.pt"
+PHASE4_SENSOR_CKPT  = CKPT__SENSOR_DIR / "phase4_multiscale_sgdm_best.pt"
+FUSION_CKPT         = CKPT__FUSION_DIR / "phase5_compressed_qat_fusion_best.pt"
 
 IMAGE_FEAT_DIM = 309
 AUX_LAMBDA     = 0.2
@@ -301,11 +304,10 @@ def run(args):
     except ImportError:
         sys.exit("torch-pruning not found.  Install with:  pip install torch-pruning")
 
-    device = (
-        "cuda" if torch.cuda.is_available()
-        else "mps"  if torch.backends.mps.is_available()
-        else "cpu"
-    )
+    # QAT INT8 image encoder is CPU-only — quantized ops require QuantizedCPU backend
+    device = "cpu"
+    torch.backends.quantized.engine = "qnnpack"
+    print(f"Device : {device}  (forced — QAT INT8 image encoder is CPU-only)\n")
     sparsity          = args.sparsity
     finetune_epochs   = args.finetune_epochs
     skip_sensitivity  = args.skip_sensitivity

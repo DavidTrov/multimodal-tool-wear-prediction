@@ -4,7 +4,7 @@ Joint Fusion — Post-Pruning Knowledge Distillation.
 Distils the pruned fusion model (student) from the pre-pruning compressed
 fusion model (teacher), recovering accuracy lost during channel pruning.
 
-Teacher : phase5_compressed_fusion_best.pt  (17.64 µm test MAE, FP32)
+Teacher : phase5_compressed_qat_fusion_best.pt  (the model that was pruned)
           — same model the student was pruned from; same input/output interface.
 
 Student : fusion_pruned.pt  (full model object, non-standard channel widths)
@@ -23,14 +23,14 @@ both encoder architectures have non-standard channel widths after pruning.
 
 Pre-requisite
 -------------
-    python experiments/compression/cwt/fusion_pruning/train.py
+    python fusion/two_tower/compression/pruning/train.py
 
 Usage
 -----
-    python experiments/compression/cwt/fusion_pruning/distill.py
-    python experiments/compression/cwt/fusion_pruning/distill.py \\
-        --student-ckpt checkpoints/fusion_pruned_30.pt --output-suffix _30
-    python experiments/compression/cwt/fusion_pruning/distill.py --alpha 0.7
+    python fusion/two_tower/compression/pruning/distill.py
+    python fusion/two_tower/compression/pruning/distill.py \\
+        --student-ckpt fusion/two_tower/compression/pruning/checkpoints/fusion_pruned.pt
+    python fusion/two_tower/compression/pruning/distill.py --alpha 0.7
 
 Run from the thesis root.
 """
@@ -54,13 +54,13 @@ from src.metrics import mae
 DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR      = ROOT / "checkpoints"
+CKPT_DIR      = Path(__file__).parent / "checkpoints"   # output dir for distilled models
 RESULTS_DIR   = Path(__file__).parent / "results"
 
-# Teacher checkpoint — pre-pruning compressed fusion (full state dict model)
-COMPRESSED_IMG_CKPT = CKPT_DIR / "resnet_distilled_2m.pt"
-PHASE4_SENSOR_CKPT  = CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
-TEACHER_FUSION_CKPT = CKPT_DIR / "phase5_compressed_fusion_best.pt"
+# Input checkpoints — needed to reconstruct teacher architecture
+COMPRESSED_IMG_CKPT = ROOT / "image" / "compression" / "checkpoints" / "resnet_qat_int8_2m.pt"
+PHASE4_SENSOR_CKPT  = ROOT / "sensor" / "multiscale" / "checkpoints" / "phase4_multiscale_sgdm_best.pt"
+TEACHER_FUSION_CKPT = ROOT / "fusion" / "two_tower" / "checkpoints" / "phase5_compressed_qat_fusion_best.pt"
 IMAGE_FEAT_DIM      = 309
 
 DEFAULT_ALPHA   = 0.5
@@ -95,12 +95,10 @@ def validate(model, loader, device):
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def run(args):
-    device = (
-        "cuda" if torch.cuda.is_available()
-        else "mps"  if torch.backends.mps.is_available()
-        else "cpu"
-    )
-    print(f"Device : {device}\n")
+    # QAT INT8 image encoder (teacher) is CPU-only — quantized ops require QuantizedCPU backend
+    device = "cpu"
+    torch.backends.quantized.engine = "qnnpack"
+    print(f"Device : {device}  (forced — QAT INT8 image encoder is CPU-only)\n")
 
     student_ckpt = Path(args.student_ckpt)
     if not student_ckpt.exists():

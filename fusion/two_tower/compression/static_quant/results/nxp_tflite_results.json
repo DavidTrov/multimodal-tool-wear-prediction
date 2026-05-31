@@ -1,0 +1,30 @@
+{
+  "pipeline": "PyTorch QAT -> ONNX QDQ (INT8) -> NXP eiq-onnx2tflite --qdq-aware-conversion -> INT8 TFLite",
+  "summary": "QDQ-preserving conversion (Path B). Translates the ONNX per-tensor INT8 scales/zero-points 1:1 into TFLite quantization params. No re-calibration, so accuracy is preserved exactly.",
+  "source_onnx": "fusion_int8_qat.onnx",
+  "output_tflite": "fusion_int8_qat_nxp.tflite",
+  "tflite_kb": 1189,
+  "fits_in_flash_2mb": true,
+  "onnx_int8_qdq": {
+    "val_mae": 40.15,
+    "test_mae": 20.63
+  },
+  "tflite_int8_nxp": {
+    "val_mae": 40.1,
+    "test_mae": 20.63
+  },
+  "accuracy_drop_vs_onnx": {
+    "val": -0.05,
+    "test": 0.0
+  },
+  "comparison_onnx2tf_path_a": {
+    "note": "onnx2tf re-runs its own INT8 calibration and discards the QAT/ORT scales -> catastrophic drift",
+    "val_mae": 84.24,
+    "test_mae": 68.17
+  },
+  "deployment_caveat": {
+    "issue": "GELU exports an Erf op with no native TFLite kernel -> 3 FlexErf (TF Select) ops",
+    "impact": "Runs under desktop TF runtime (used for validation); NOT supported by TFLite-Micro on the MCU",
+    "fix": "Retrain with tanh-approximation GELU so the activation lowers to native TANH; QDQ translation accuracy is unaffected"
+  }
+}
