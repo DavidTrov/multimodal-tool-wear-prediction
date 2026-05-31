@@ -51,7 +51,7 @@ from src.metrics import mae
 # ── Config ────────────────────────────────────────────────────────────────────
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR      = ROOT / "checkpoints"
+CKPT_DIR      = ROOT / "sensor" / "multiscale" / "checkpoints"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
 LR          = 1e-3   # 0.001 for SGDM; 0.01 caused explosion on this 647-sample dataset

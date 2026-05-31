@@ -1,163 +1,143 @@
 """
-ONNX -> TFLite Conversion for NXP FRDM-MCXN947 Deployment.
+FP32 ONNX → INT8 TFLite for NXP FRDM-MCXN947 deployment.
 
-Converts the distilled fusion model to a fully-quantized INT8 TFLite model
-via the following pipeline:
+Converts the FP32 ONNX produced by export_onnx.py to a fully-quantized INT8
+TFLite flatbuffer for execution on the MCXN947 Cortex-M33 via TFLite Micro.
 
-    PyTorch .pt  ->  FP32 ONNX
-                 ->  FP32 ONNX (axes deduplicated for eiq-onnx2tflite compat)
-                 ->  INT8 TFLite via onnx2tf flatbuffer_direct quantization
+Why start from the FP32 ONNX, not the INT8 QDQ ONNX
+------------------------------------------------------
+The INT8 QDQ ONNX from ONNX Runtime contains per-channel bias tensors quantised
+to INT32.  TFLite's DEQUANTIZE kernel does not accept INT32 inputs, causing
+AllocateTensors() to fail.  The FP32 ONNX has no quantised nodes at all
+(torch.export unrolls the QAT image encoder to standard Conv/Relu/Add), so
+onnx2tf can calibrate and quantise it cleanly using its own per-channel INT8
+scheme.
 
-Note: CBAM has been removed from ``MultiScaleSensorCNN`` at the architecture
-level (retrained without it).  No runtime replacement is needed.
+Pipeline
+--------
+  1. Inline external data        — fusion_fp32_qat.onnx + .data → single file
+  2. Deduplicate axes            — opset-18 shared ReduceMean/ReduceMax fix
+  3. Build calibration arrays    — N training samples as .npy files
+  4. onnx2tf → INT8 TFLite       — per-channel calibration, flatbuffer_direct
+  5. Evaluate on val + test      — TFLite interpreter, NHWC inputs
+  6. Save results JSON
 
-Why axes are deduplicated
--------------------------
-The PyTorch ONNX exporter (opset 18) emits ReduceMean/ReduceMax nodes that
-share a single initializer tensor for their ``axes`` input.  NXP's
-eiq-onnx2tflite (and onnx2tf before v2.5) misparse shared axes tensors as
-INT32.  Duplicating them so each Reduce op has its own fixes the issue.
+Note on input layout
+---------------------
+PyTorch uses NCHW.  onnx2tf inserts Transpose nodes automatically.
+The final TFLite model expects NHWC:
+    image     : (1, 224, 224,  3)  float32
+    scalogram : (1,  64,  64,  5)  float32
 
-Note on data layout
--------------------
-The TFLite model expects NHWC inputs:
-  - image:     (1, 224, 224, 3)
-  - scalogram: (1,  64,  64, 5)
+Generating a C header for bare-metal deployment
+------------------------------------------------
+    xxd -i fusion_int8_qat.tflite > fusion_model.h
 
 Pre-requisite
 -------------
-    pip install onnx onnx2tf tensorflow torch
+    python fusion/two_tower/compression/static_quant/export_onnx.py \\
+        --model-ckpt .../fusion_distilled_qat.pt --output-suffix _qat
+    pip install onnx onnx2tf tensorflow
 
 Usage
 -----
-    python experiments/compression/cwt/phase4_static_quant/convert_tflite.py
-    python experiments/compression/cwt/phase4_static_quant/convert_tflite.py \\
-        --calib-samples 100
+    python fusion/two_tower/compression/static_quant/convert_tflite.py
+
+    python fusion/two_tower/compression/static_quant/convert_tflite.py \\
+        --fp32-onnx fusion/deployment/checkpoints/fusion_fp32_qat.onnx \\
+        --output-suffix _qat --calib-samples 100
 
 Run from the thesis root.
 """
 
 import argparse
 import json
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
-import torch
-from torch.utils.data import DataLoader
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
 from fusion.two_tower.dataset import MATWIFusionScalogramDataset
+from torch.utils.data import DataLoader
 
-DATA_ROOT     = ROOT / "data" / "raw"
-SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
-FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR      = ROOT / "checkpoints"
-RESULTS_DIR   = Path(__file__).parent / "results"
+DATA_ROOT        = ROOT / "data" / "raw"
+SCALOGRAM_DIR    = ROOT / "data" / "processed" / "scalograms"
+FEATURES_PATH    = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
+DEPLOY_CKPT_DIR  = ROOT / "fusion" / "deployment" / "checkpoints"
+RESULTS_DIR      = Path(__file__).parent / "results"
 
-DEFAULT_CALIB_SAMPLES = 50
+DEFAULT_CALIB_SAMPLES = 100
 NUM_WORKERS           = 0
 
 
-# -- Step 1: Load model and export FP32 ONNX ----------------------------------
+# ── Step 1: Inline external data ──────────────────────────────────────────────
 
-def export_fp32_onnx(pt_path: Path, onnx_path: Path):
-    """Load distilled model and export to FP32 ONNX (no CBAM in architecture)."""
-    model = torch.load(str(pt_path), map_location="cpu", weights_only=False)
-    model.eval()
+def inline_onnx(onnx_path: Path, output_path: Path):
+    """
+    Load an ONNX model that may have a companion .data file and save it as a
+    single self-contained file.  onnx2tf and dedup_axes both require a single
+    file; torch.onnx.export with opset 18 splits large models automatically.
+    """
+    import onnx
+    from onnx.external_data_helper import load_external_data_for_model
 
-    # Single-output wrapper for ONNX
-    class Wrapper(torch.nn.Module):
-        def __init__(self, m):
-            super().__init__()
-            self.m = m
-        def forward(self, image, scalogram):
-            out = self.m(image, scalogram)
-            return out[0] if isinstance(out, tuple) else out
-
-    wrapper = Wrapper(model)
-    wrapper.eval()
-
-    img  = torch.randn(1, 3, 224, 224)
-    scal = torch.randn(1, 5, 64, 64)
-    torch.onnx.export(
-        wrapper, (img, scal),
-        str(onnx_path),
-        opset_version=18,
-        input_names=["image", "scalogram"],
-        output_names=["prediction"],
-        dynamic_axes={
-            "image": {0: "batch"},
-            "scalogram": {0: "batch"},
-            "prediction": {0: "batch"},
-        },
-    )
-    size_kb = onnx_path.stat().st_size / 1024
-    print(f"  Saved: {onnx_path.name} ({size_kb:.0f} KB)")
-    return model  # Return for PyTorch evaluation
+    model = onnx.load(str(onnx_path), load_external_data=False)
+    load_external_data_for_model(model, str(onnx_path.parent))
+    onnx.save(model, str(output_path))
+    kb = output_path.stat().st_size / 1024
+    print(f"  Inlined: {output_path.name}  ({kb:.0f} KB)")
 
 
-# -- Step 2: Deduplicate shared axes initializers ----------------------------
+# ── Step 2: Deduplicate shared axes initializers ───────────────────────────────
 
-def deduplicate_axes(onnx_path: Path, output_path: Path):
-    """Ensure each ReduceMean/ReduceMax has its own axes initializer."""
+def deduplicate_axes(onnx_path: Path, output_path: Path) -> int:
+    """
+    Ensure each ReduceMean/ReduceMax node has its own axes initializer.
+
+    opset-18 torch.onnx.export emits a single shared initializer for the axes
+    input of all ReduceMean/ReduceMax nodes.  Some parsers (onnx2tf included)
+    mis-read shared tensors as INT32 scalars rather than INT64 arrays.
+    Duplicating fixes the parse without changing model semantics.
+    """
     import onnx
     from onnx import numpy_helper
 
     model = onnx.load(str(onnx_path))
-    used_names = set()
-    fixes = 0
+    used, fixes = set(), 0
     for node in model.graph.node:
         if node.op_type in ("ReduceMean", "ReduceMax") and len(node.input) >= 2:
             axes_name = node.input[1]
-            if axes_name in used_names:
+            if axes_name in used:
                 for init in model.graph.initializer:
                     if init.name == axes_name:
-                        arr = numpy_helper.to_array(init).astype(np.int64)
+                        arr      = numpy_helper.to_array(init).astype(np.int64)
                         new_name = f"{axes_name}_{node.name}"
-                        new_init = numpy_helper.from_array(arr, name=new_name)
-                        model.graph.initializer.append(new_init)
+                        model.graph.initializer.append(
+                            numpy_helper.from_array(arr, name=new_name)
+                        )
                         node.input[1] = new_name
                         fixes += 1
                         break
             else:
-                used_names.add(axes_name)
-
+                used.add(axes_name)
     onnx.save(model, str(output_path))
-    print(f"  Deduplicated {fixes} shared axes tensors -> {output_path.name}")
+    return fixes
 
 
-# -- Step 3: onnx2tf with INT8 quantization ----------------------------------
-
-def convert_to_int8_tflite(onnx_path: Path, output_dir: Path, calib_dir: Path):
-    """Convert ONNX to INT8 TFLite via onnx2tf flatbuffer_direct quantizer."""
-    import onnx2tf
-
-    onnx2tf.convert(
-        input_onnx_file_path=str(onnx_path),
-        output_folder_path=str(output_dir),
-        non_verbose=True,
-        output_integer_quantized_tflite=True,
-        quant_type="per-channel",
-        custom_input_op_name_np_data_path=[
-            ["image",     str(calib_dir / "calib_images.npy")],
-            ["scalogram", str(calib_dir / "calib_scalograms.npy")],
-        ],
-    )
-    print("  onnx2tf conversion complete.")
-
-
-# -- Step 4: Prepare calibration data ----------------------------------------
+# ── Step 3: Calibration data ───────────────────────────────────────────────────
 
 def prepare_calibration_data(n_samples: int, calib_dir: Path):
-    """Save calibration data as numpy arrays for onnx2tf."""
+    """
+    Save N training samples as (N, C, H, W) float32 .npy arrays.
+    onnx2tf reads these and transposes NCHW → NHWC internally.
+    """
     calib_dir.mkdir(parents=True, exist_ok=True)
-
-    ds = MATWIFusionScalogramDataset(
-        DATA_ROOT, SCALOGRAM_DIR, FEATURES_PATH, "train"
-    )
+    ds     = MATWIFusionScalogramDataset(DATA_ROOT, SCALOGRAM_DIR, FEATURES_PATH, "train")
     loader = DataLoader(ds, batch_size=1, shuffle=True, num_workers=NUM_WORKERS)
 
     images, scalograms = [], []
@@ -167,178 +147,248 @@ def prepare_calibration_data(n_samples: int, calib_dir: Path):
         images.append(img.numpy())
         scalograms.append(scal.numpy())
 
-    images     = np.concatenate(images, axis=0)       # (N, 3, 224, 224)
-    scalograms = np.concatenate(scalograms, axis=0)   # (N, 5, 64, 64)
+    images     = np.concatenate(images,     axis=0)   # (N, 3, 224, 224)
+    scalograms = np.concatenate(scalograms, axis=0)   # (N, 5,  64,  64)
 
     np.save(str(calib_dir / "calib_images.npy"),     images)
     np.save(str(calib_dir / "calib_scalograms.npy"), scalograms)
-    print(f"  Calibration data: {n_samples} samples saved to {calib_dir}")
+    print(f"  Saved {n_samples} calibration samples  "
+          f"(images {images.shape}, scalograms {scalograms.shape})")
 
 
-# -- Evaluation ---------------------------------------------------------------
+# ── Step 4: onnx2tf conversion ─────────────────────────────────────────────────
 
-def evaluate_tflite(tflite_path: str, split: str) -> dict:
-    """Evaluate a TFLite model on a dataset split. Returns MAE, std, n."""
-    import tensorflow as tf
+def convert_to_int8_tflite(onnx_path: Path, tflite_out_dir: Path, calib_dir: Path):
+    """
+    Convert FP32 ONNX → INT8 TFLite via onnx2tf per-channel calibration.
+    Calibration data is NCHW float32; onnx2tf transposes to NHWC internally.
+    """
+    try:
+        import onnx2tf
+    except ImportError:
+        sys.exit("onnx2tf not found.  Install with:  pip install onnx2tf tensorflow")
 
-    interpreter = tf.lite.Interpreter(model_path=str(tflite_path), num_threads=4)
-    interpreter.allocate_tensors()
+    onnx2tf.convert(
+        input_onnx_file_path            = str(onnx_path),
+        output_folder_path              = str(tflite_out_dir),
+        non_verbose                     = True,
+        output_integer_quantized_tflite = True,
+        quant_type                      = "per-channel",
+        custom_input_op_name_np_data_path = [
+            ["image",     str(calib_dir / "calib_images.npy")],
+            ["scalogram", str(calib_dir / "calib_scalograms.npy")],
+        ],
+    )
 
-    input_details  = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
 
-    # Map inputs by name
-    input_map = {d["name"]: d["index"] for d in input_details}
+# ── Step 5: Evaluate TFLite model ──────────────────────────────────────────────
 
-    ds = MATWIFusionScalogramDataset(DATA_ROOT, SCALOGRAM_DIR, FEATURES_PATH, split)
+def evaluate_tflite(tflite_path: Path, split: str) -> dict:
+    """
+    Evaluate a TFLite model on a dataset split.
+
+    The model must have FP32 inputs and outputs (the integer_quant variant from
+    onnx2tf, not full_integer_quant).  This is correct for measuring accuracy:
+    integer_quant and full_integer_quant have identical INT8 internals; only
+    the I/O boundary format differs.  FP32 I/O evaluation avoids having to
+    replicate TFLite's per-tensor boundary quantisation in Python.
+
+    PyTorch NCHW tensors are transposed to TFLite NHWC here.
+    """
+    try:
+        import tensorflow as tf
+    except ImportError:
+        sys.exit("tensorflow not found.  Install with:  pip install tensorflow")
+
+    interp = tf.lite.Interpreter(model_path=str(tflite_path), num_threads=4)
+    interp.allocate_tensors()
+
+    input_details  = interp.get_input_details()
+    output_details = interp.get_output_details()
+
+    # Sanity-check: warn if the model has non-FP32 inputs (wrong variant)
+    for d in input_details:
+        if d["dtype"] != np.float32:
+            print(f"  WARNING: input '{d['name']}' has dtype {d['dtype']} — "
+                  f"expected float32.  Did you accidentally use full_integer_quant?")
+
+    # Match inputs by name; fall back to index order
+    input_by_name = {d["name"]: d for d in input_details}
+    img_detail    = input_by_name.get("image",     input_details[0])
+    scal_detail   = input_by_name.get("scalogram", input_details[1])
+
+    ds     = MATWIFusionScalogramDataset(DATA_ROOT, SCALOGRAM_DIR, FEATURES_PATH, split)
     loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=NUM_WORKERS)
 
     preds, targets = [], []
     for img, scalo, tgt in loader:
-        img_nhwc   = img.numpy().transpose(0, 2, 3, 1).astype(np.float32)
-        scalo_nhwc = scalo.numpy().transpose(0, 2, 3, 1).astype(np.float32)
+        img_nhwc   = img.numpy().transpose(0, 2, 3, 1).astype(np.float32)   # (1,224,224,3)
+        scalo_nhwc = scalo.numpy().transpose(0, 2, 3, 1).astype(np.float32) # (1, 64, 64,5)
 
-        interpreter.set_tensor(input_map["image"],     img_nhwc)
-        interpreter.set_tensor(input_map["scalogram"], scalo_nhwc)
-        interpreter.invoke()
+        interp.set_tensor(img_detail["index"],  img_nhwc)
+        interp.set_tensor(scal_detail["index"], scalo_nhwc)
+        interp.invoke()
 
-        out = interpreter.get_tensor(output_details[0]["index"])
-        preds.append(float(out[0, 0]))
+        out = interp.get_tensor(output_details[0]["index"])
+        preds.append(float(out.flat[0]))
         targets.append(float(tgt[0]))
 
-    p = np.array(preds)
-    t = np.array(targets)
+    p, t = np.array(preds), np.array(targets)
     errs = np.abs(p - t)
-    return {
-        "mae":  round(float(errs.mean()), 2),
-        "std":  round(float(errs.std()),  2),
-        "n":    len(ds),
-    }
+    return {"mae": round(float(errs.mean()), 2),
+            "std": round(float(errs.std()),  2),
+            "n":   len(ds)}
 
 
-def evaluate_pytorch(model, split: str) -> dict:
-    """Evaluate a PyTorch model on a dataset split."""
-    ds = MATWIFusionScalogramDataset(DATA_ROOT, SCALOGRAM_DIR, FEATURES_PATH, split)
-    loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=NUM_WORKERS)
-
-    preds, targets = [], []
-    for img, scal, tgt in loader:
-        with torch.no_grad():
-            out = model(img, scal)
-            pred = out[0] if isinstance(out, tuple) else out
-        preds.append(pred.item())
-        targets.append(tgt.item())
-
-    p = np.array(preds)
-    t = np.array(targets)
-    errs = np.abs(p - t)
-    return {
-        "mae":  round(float(errs.mean()), 2),
-        "std":  round(float(errs.std()),  2),
-        "n":    len(ds),
-    }
-
-
-# -- Main --------------------------------------------------------------------
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 def run(args):
-    pt_path    = CKPT_DIR / "fusion_distilled.pt"
-    onnx_path  = CKPT_DIR / "fusion_fp32.onnx"
-    dedup_path = CKPT_DIR / "fusion_fp32_dedup.onnx"
-    tflite_dir = CKPT_DIR / "fusion_tflite"
-    calib_dir  = CKPT_DIR / "calib_data"
+    try:
+        import onnx
+    except ImportError:
+        sys.exit("onnx not found.  Install with:  pip install onnx")
 
-    if not pt_path.exists():
-        sys.exit(f"Checkpoint not found: {pt_path}")
+    fp32_onnx = Path(args.fp32_onnx)
+    suffix    = args.output_suffix
+    out_tflite = DEPLOY_CKPT_DIR / f"fusion_int8{suffix}.tflite"
 
-    # -- Step 1: Export FP32 ONNX --------------------------------------------
-    print("== Step 1: Export FP32 ONNX ==")
-    model_fp32 = export_fp32_onnx(pt_path, onnx_path)
+    if not fp32_onnx.exists():
+        sys.exit(
+            f"FP32 ONNX not found: {fp32_onnx}\n"
+            f"Run export_onnx.py --output-suffix {suffix} first."
+        )
 
-    # -- Step 2: Deduplicate axes --------------------------------------------
-    print("\n== Step 2: Deduplicate shared axes ==")
-    deduplicate_axes(onnx_path, dedup_path)
+    data_file = fp32_onnx.with_suffix(".onnx.data")
+    has_external = data_file.exists()
+    print(f"Input  : {fp32_onnx.name}  ({fp32_onnx.stat().st_size / 1024:.0f} KB)"
+          + (f" + {data_file.name} ({data_file.stat().st_size / 1024:.0f} KB)" if has_external else ""))
+    print(f"Output : {out_tflite.name}\n")
 
-    # -- Step 3: Prepare calibration data ------------------------------------
-    print(f"\n== Step 3: Prepare calibration data ({args.calib_samples} samples) ==")
-    prepare_calibration_data(args.calib_samples, calib_dir)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
 
-    # -- Step 4: Convert to INT8 TFLite --------------------------------------
-    print("\n== Step 4: onnx2tf -> INT8 TFLite ==")
-    convert_to_int8_tflite(dedup_path, tflite_dir, calib_dir)
+        # ── Step 1: Inline external data ──────────────────────────────────────
+        if has_external:
+            print("── Step 1: Inline external data ─────────────────────────────────────")
+            inline_path = tmp / f"inline{suffix}.onnx"
+            inline_onnx(fp32_onnx, inline_path)
+            print()
+        else:
+            inline_path = fp32_onnx
 
-    # Identify output files
-    int8_tflite = tflite_dir / f"{dedup_path.stem}_integer_quant.tflite"
-    fp32_tflite = tflite_dir / f"{dedup_path.stem}_float32.tflite"
+        # ── Step 2: Deduplicate axes ───────────────────────────────────────────
+        print("── Step 2: Deduplicate shared axes initializers ─────────────────────")
+        dedup_path = tmp / f"dedup{suffix}.onnx"
+        fixes = deduplicate_axes(inline_path, dedup_path)
+        print(f"  Fixed {fixes} shared axes tensor(s)\n")
 
-    fp32_kb = fp32_tflite.stat().st_size / 1024
-    int8_kb = int8_tflite.stat().st_size / 1024
-    print(f"\n  FP32 TFLite: {fp32_kb:.0f} KB ({fp32_kb/1024:.2f} MB)")
-    print(f"  INT8 TFLite: {int8_kb:.0f} KB ({int8_kb/1024:.2f} MB)")
+        # ── Step 3: Calibration data ───────────────────────────────────────────
+        print(f"── Step 3: Calibration data ({args.calib_samples} training samples) ──────────────")
+        calib_dir = tmp / "calib"
+        prepare_calibration_data(args.calib_samples, calib_dir)
+        print()
 
-    # -- Step 5: Evaluate ----------------------------------------------------
-    print("\n== Step 5: Evaluate ==")
+        # ── Step 4: onnx2tf → INT8 TFLite ─────────────────────────────────────
+        print("── Step 4: onnx2tf → INT8 TFLite ────────────────────────────────────")
+        tflite_out_dir = tmp / "tflite_out"
+        tflite_out_dir.mkdir()
+        convert_to_int8_tflite(dedup_path, tflite_out_dir, calib_dir)
 
-    # PyTorch FP32
-    pt_val  = evaluate_pytorch(model_fp32, "val")
-    pt_test = evaluate_pytorch(model_fp32, "test")
-    print(f"  PyTorch FP32         val MAE: {pt_val['mae']:.2f}  test MAE: {pt_test['mae']:.2f}")
+        # full_integer_quant : INT8 I/O  — MCU deployment target
+        # integer_quant      : FP32 I/O — Python accuracy evaluation
+        # Both have identical INT8 weights and activations; only the I/O
+        # boundary format differs.  Evaluating the FP32-I/O variant avoids
+        # having to replicate TFLite's per-tensor boundary quantisation in
+        # Python (which is error-prone and gave 89 µm instead of 20 µm).
+        full_int8 = list(tflite_out_dir.glob("*full_integer_quant.tflite"))
+        part_int8 = [f for f in tflite_out_dir.glob("*integer_quant.tflite")
+                     if "full" not in f.name and "int16" not in f.name]
 
-    # TFLite FP32
-    fp32_val  = evaluate_tflite(str(fp32_tflite), "val")
-    fp32_test = evaluate_tflite(str(fp32_tflite), "test")
-    print(f"  TFLite FP32          val MAE: {fp32_val['mae']:.2f}  test MAE: {fp32_test['mae']:.2f}")
+        if not full_int8 and not part_int8:
+            all_tflite = list(tflite_out_dir.glob("*.tflite"))
+            print(f"  Available TFLite files: {[f.name for f in all_tflite]}")
+            sys.exit("No integer-quantized TFLite found — check onnx2tf output above.")
 
-    # TFLite INT8
-    int8_val  = evaluate_tflite(str(int8_tflite), "val")
-    int8_test = evaluate_tflite(str(int8_tflite), "test")
-    print(f"  TFLite INT8          val MAE: {int8_val['mae']:.2f}  test MAE: {int8_test['mae']:.2f}")
+        deploy_tmp = full_int8[0] if full_int8 else part_int8[0]
+        eval_tmp   = part_int8[0] if part_int8 else full_int8[0]
 
-    # -- Summary -------------------------------------------------------------
-    print("\n== Summary ==")
-    print(f"  {'Model':<30s} {'Val MAE':>8s} {'Test MAE':>8s} {'Size':>8s}")
-    print(f"  {'-'*30} {'-'*8} {'-'*8} {'-'*8}")
-    print(f"  {'PyTorch FP32':<30s} {pt_val['mae']:8.2f} {pt_test['mae']:8.2f} {'—':>8s}")
-    print(f"  {'TFLite FP32':<30s} {fp32_val['mae']:8.2f} {fp32_test['mae']:8.2f} {f'{fp32_kb:.0f} KB':>8s}")
-    print(f"  {'TFLite INT8':<30s} {int8_val['mae']:8.2f} {int8_test['mae']:8.2f} {f'{int8_kb:.0f} KB':>8s}")
-    print()
+        int8_kb = deploy_tmp.stat().st_size / 1024
+        print(f"  Deploy (INT8 I/O) : {deploy_tmp.name}  ({int8_kb:.0f} KB)")
+        print(f"  Eval   (FP32 I/O) : {eval_tmp.name}")
+
+        DEPLOY_CKPT_DIR.mkdir(exist_ok=True)
+        shutil.copy2(deploy_tmp, out_tflite)
+        eval_tflite_out = out_tflite.with_name(out_tflite.stem + "_fp32io.tflite")
+        shutil.copy2(eval_tmp, eval_tflite_out)
+        print(f"  Copied → {out_tflite}  (deploy)")
+        print(f"  Copied → {eval_tflite_out}  (eval)\n")
+
+        # ── Step 5: Evaluate using FP32-I/O variant ────────────────────────────
+        print("── Step 5: Evaluate INT8 TFLite (FP32 I/O) ─────────────────────────")
+        int8_val  = evaluate_tflite(eval_tflite_out, "val")
+        int8_test = evaluate_tflite(eval_tflite_out, "test")
+
+    print(f"  val   n={int8_val['n']:4d}  MAE={int8_val['mae']:.2f} ± {int8_val['std']:.2f} µm")
+    print(f"  test  n={int8_test['n']:4d}  MAE={int8_test['mae']:.2f} ± {int8_test['std']:.2f} µm")
+
     fits = int8_kb <= 2048
-    print(f"  Flash target: 2048 KB  |  INT8 model: {int8_kb:.0f} KB  |  "
-          f"{'FITS' if fits else 'OVER'}")
+    print("\n── Summary ──────────────────────────────────────────────────────────")
+    print(f"  INT8 TFLite  : {int8_kb:.0f} KB  "
+          f"({'✓ fits in 2 MB flash' if fits else '✗ over 2 MB flash'})")
+    print(f"  val  MAE     : {int8_val['mae']:.2f} ± {int8_val['std']:.2f} µm")
+    print(f"  test MAE     : {int8_test['mae']:.2f} ± {int8_test['std']:.2f} µm")
 
-    # -- Save results --------------------------------------------------------
+    print("\n── Baselines ────────────────────────────────────────────────────────")
+    print(f"  ONNX Runtime INT8 (pre-TFLite)            test MAE : 20.63 µm")
+    print(f"  Compressed FP32 fusion (phase5)           test MAE : 15.55 µm")
+    print(f"  Paper ResNet50 image-only                 test MAE : 19.00 µm")
+    print(f"  Phase 1 image-only ResNet18               test MAE : 23.17 µm")
+    print(f"  Phase 4 sensor-only MultiScaleCNN         test MAE : 29.27 µm")
+    print(f"  TFLite INT8 (this run)                    test MAE : {int8_test['mae']:.2f} µm")
+
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    results = {
-        "pipeline": "PyTorch -> ONNX -> onnx2tf flatbuffer_direct -> INT8 TFLite",
-        "calib_samples": args.calib_samples,
-        "fp32_tflite_kb": round(fp32_kb, 1),
-        "int8_tflite_kb": round(int8_kb, 1),
-        "fits_in_flash":  fits,
-        "pytorch_fp32":   {"val_mae": pt_val["mae"],   "test_mae": pt_test["mae"]},
-        "tflite_fp32":    {"val_mae": fp32_val["mae"],   "test_mae": fp32_test["mae"]},
-        "tflite_int8":    {"val_mae": int8_val["mae"],   "test_mae": int8_test["mae"]},
-        "accuracy_drop_int8_quant": {
-            "val":  round(int8_val["mae"]  - fp32_val["mae"],  2),
-            "test": round(int8_test["mae"] - fp32_test["mae"], 2),
+    results_name = f"tflite_results{suffix}.json"
+    out = {
+        "source_fp32_onnx":  str(fp32_onnx),
+        "tflite_path":       str(out_tflite),
+        "calib_samples":     args.calib_samples,
+        "int8_tflite_kb":    round(int8_kb, 1),
+        "fits_in_flash":     fits,
+        "tflite_int8": {
+            "val_mae":  int8_val["mae"],  "val_std":  int8_val["std"],
+            "test_mae": int8_test["mae"], "test_std": int8_test["std"],
         },
     }
-    out_path = RESULTS_DIR / "tflite_results.json"
+    out_path = RESULTS_DIR / results_name
     with open(out_path, "w") as f:
-        json.dump(results, f, indent=2)
+        json.dump(out, f, indent=2)
 
-    print(f"\nResults -> {out_path}")
-    print(f"Deploy  -> {int8_tflite}")
-    print(f"\nNext: import {int8_tflite.name} into MCUXpresso IDE -> eIQ Toolkit\n"
-          f"      or use xxd to convert to C array for bare-metal deployment.")
+    print(f"\nResults → {out_path}")
+    print(f"Deploy  → {out_tflite}")
+    print(f"\nTo generate a C header for bare-metal deployment:")
+    print(f"  xxd -i {out_tflite.name} > fusion_model.h")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Convert fusion model to INT8 TFLite for NXP deployment"
+        description="Convert FP32 ONNX → INT8 TFLite for MCU deployment"
     )
     parser.add_argument(
-        "--calib-samples", type=int, default=DEFAULT_CALIB_SAMPLES,
-        help="Training samples for INT8 calibration (default: 50)"
+        "--fp32-onnx",
+        default=str(DEPLOY_CKPT_DIR / "fusion_fp32_qat.onnx"),
+        help="FP32 ONNX from export_onnx.py "
+             "(default: fusion/deployment/checkpoints/fusion_fp32_qat.onnx)",
+    )
+    parser.add_argument(
+        "--output-suffix",
+        default="_qat",
+        help="Suffix for output files (default: _qat)",
+    )
+    parser.add_argument(
+        "--calib-samples",
+        type=int,
+        default=DEFAULT_CALIB_SAMPLES,
+        help=f"Training samples for INT8 calibration (default: {DEFAULT_CALIB_SAMPLES})",
     )
     args = parser.parse_args()
     run(args)

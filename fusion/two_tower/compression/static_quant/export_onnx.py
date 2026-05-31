@@ -1,12 +1,12 @@
 """
-Phase 4 — Static INT8 Quantization + ONNX Export.
+Static INT8 Quantization + ONNX Export for the Distilled Fusion Model.
 
-Converts fusion_distilled.pt to a deployment-ready INT8 ONNX model with
-calibrated INT8 activations, resolving the RAM constraint that blocked
-dynamic-quant (phase3) deployment on the NXP FRDM-MCXN947.
+Converts fusion_distilled.pt (or fusion_distilled_qat.pt) to a deployment-ready
+INT8 ONNX model with calibrated INT8 activations, resolving the RAM constraint
+that blocked dynamic-quant deployment on the NXP FRDM-MCXN947.
 
-Why static quantization rather than dynamic (phase3)
------------------------------------------------------
+Why static quantization rather than dynamic
+-------------------------------------------
 Dynamic quantization keeps activations FP32. At 224×224 input, the first
 convolutional feature map alone (13×112×112 FP32) is 637 KB — exceeding the
 512 KB SRAM ceiling. Static quantization calibrates per-tensor INT8 scales
@@ -28,10 +28,17 @@ ONNX. ONNX Runtime post-training static quantization writes QDQ
 Layers that cannot be INT8 (GroupNorm, GELU, Sigmoid) are left FP32
 automatically by the calibration pass — no manual exclusion list needed.
 
+Note on the QAT variant (--output-suffix _qat)
+----------------------------------------------
+fusion_distilled_qat.pt embeds a QAT INT8 image encoder. torch.onnx.export
+will represent those layers as QLinear/QDQ nodes in the ONNX graph. ONNX
+Runtime's quantize_static pass will then calibrate the remaining FP32 layers
+(sensor CNN + fusion head), producing a fully INT8 ONNX model.
+
 Pipeline
 --------
-  1. Load fusion_distilled.pt  →  verify FP32 accuracy
-  2. Wrap model (drop auxiliary output)  →  export FP32 ONNX (opset 13)
+  1. Load fusion_distilled[_qat].pt  →  verify FP32/INT8 accuracy on CPU
+  2. Wrap model (drop auxiliary output)  →  export ONNX (opset 18)
   3. Verify ONNX vs PyTorch output diff  (sanity check)
   4. Calibrate on N training samples     →  compute per-tensor INT8 scales
   5. Write INT8 QDQ ONNX
@@ -41,20 +48,24 @@ Pipeline
 
 Outputs
 -------
-  checkpoints/fusion_fp32.onnx          FP32 reference (opset 13)
-  checkpoints/fusion_int8.onnx          INT8 QDQ (deployable)
-  phase4_static_quant/results/static_quant_results.json
+  fusion/deployment/checkpoints/fusion_fp32[suffix].onnx   FP32 reference
+  fusion/deployment/checkpoints/fusion_int8[suffix].onnx   INT8 QDQ (deployable)
+  fusion/two_tower/compression/static_quant/results/static_quant_results[suffix].json
 
 Pre-requisite
 -------------
-    python experiments/compression/cwt/fusion_pruning/distill.py
-    pip install onnx onnxruntime   # already installed if phase3 ran
+    python fusion/two_tower/compression/pruning/distill.py [--output-suffix _qat]
+    pip install onnx onnxruntime
 
 Usage
 -----
-    python experiments/compression/cwt/phase4_static_quant/export_onnx.py
-    python experiments/compression/cwt/phase4_static_quant/export_onnx.py \\
-        --model-ckpt checkpoints/fusion_distilled.pt --calib-samples 300
+    # Non-QAT pipeline (default)
+    python fusion/two_tower/compression/static_quant/export_onnx.py
+
+    # QAT pipeline
+    python fusion/two_tower/compression/static_quant/export_onnx.py \\
+        --model-ckpt fusion/two_tower/compression/pruning/checkpoints/fusion_distilled_qat.pt \\
+        --output-suffix _qat
 
 Run from the thesis root.
 """
@@ -76,11 +87,12 @@ sys.path.insert(0, str(ROOT))
 from fusion.two_tower.dataset import MATWIFusionScalogramDataset
 from src.metrics import mae
 
-DATA_ROOT     = ROOT / "data" / "raw"
-SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
-FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR      = ROOT / "checkpoints"
-RESULTS_DIR   = Path(__file__).parent / "results"
+DATA_ROOT        = ROOT / "data" / "raw"
+SCALOGRAM_DIR    = ROOT / "data" / "processed" / "scalograms"
+FEATURES_PATH    = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
+PRUNING_CKPT_DIR = Path(__file__).parents[1] / "pruning" / "checkpoints"
+DEPLOY_CKPT_DIR  = ROOT / "fusion" / "deployment" / "checkpoints"   # ONNX outputs
+RESULTS_DIR      = Path(__file__).parent / "results"
 
 OPSET_VERSION         = 18    # torch.onnx >= 2.0 targets opset 18 by default;
                               # NXP eIQ Model Tool accepts opset 7–18
@@ -212,21 +224,20 @@ def run(args):
     except ImportError as e:
         sys.exit(f"Missing dependency: {e}\n  pip install onnx onnxruntime")
 
-    device = (
-        "cuda" if torch.cuda.is_available()
-        else "mps"  if torch.backends.mps.is_available()
-        else "cpu"
-    )
+    # ONNX export runs on CPU; PyTorch QAT INT8 ops require QuantizedCPU.
+    # torch.onnx.export always traces on CPU for quantized models anyway.
+    device = "cpu"
+    torch.backends.quantized.engine = "qnnpack"
     print(f"Device : {device}\n")
 
     model_ckpt = Path(args.model_ckpt)
     if not model_ckpt.exists():
         sys.exit(f"Checkpoint not found: {model_ckpt}\n"
-                 "Run experiments/compression/cwt/fusion_pruning/distill.py first.")
+                 "Run fusion/two_tower/compression/pruning/distill.py first.")
 
     suffix       = args.output_suffix
-    fp32_onnx    = CKPT_DIR / f"fusion_fp32{suffix}.onnx"
-    int8_onnx    = CKPT_DIR / f"fusion_int8{suffix}.onnx"
+    fp32_onnx    = DEPLOY_CKPT_DIR / f"fusion_fp32{suffix}.onnx"
+    int8_onnx    = DEPLOY_CKPT_DIR / f"fusion_int8{suffix}.onnx"
     results_name = f"static_quant_results{suffix}.json"
 
     # ── Load FP32 distilled model ─────────────────────────────────────────────
@@ -249,7 +260,7 @@ def run(args):
     dummy_img   = torch.randn(1, 3, 224, 224, device=device)
     dummy_scalo = torch.randn(1, 5, 64,  64,  device=device)
 
-    CKPT_DIR.mkdir(exist_ok=True)
+    DEPLOY_CKPT_DIR.mkdir(exist_ok=True)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         torch.onnx.export(
@@ -335,10 +346,13 @@ def run(args):
 
     # ── Baseline comparison ───────────────────────────────────────────────────
     print("\n── Baseline comparison ──────────────────────────────────────────────")
-    print(f"  Paper ResNet50 (image-only)               test MAE : 19.00 µm")
-    print(f"  Phase 5c-ii compressed fusion (FP32)      test MAE : 17.66 µm")
-    print(f"  Phase 5d dynamic INT8 (FP32 acts, .pt)    test MAE : 18.70 µm  ✗ not deployable (RAM)")
-    print(f"  Phase 5e static  INT8 (INT8 acts, .onnx)  test MAE : {int8_test['mae']:.2f} µm"
+    print(f"  Paper ResNet50 (image-only)                      test MAE : 19.00 µm")
+    print(f"  Compressed QAT fusion INT8 ONNX (QAT pipeline)  test MAE : 20.63 µm  ✓ deployable")
+    print(f"  Non-QAT pipeline INT8 ONNX (fusion_int8.onnx)   test MAE : 34.80 µm  ✓ deployable (older/worse run)")
+    print(f"  Compressed FP32 fusion (phase5, FP32)            test MAE : 15.55 µm")
+    print(f"  Phase 1 image-only (ResNet18)                    test MAE : 23.17 µm")
+    print(f"  Phase 4 sensor-only (MultiScaleCNN SE)           test MAE : 29.27 µm")
+    print(f"  This run static INT8 (INT8 acts, .onnx)          test MAE : {int8_test['mae']:.2f} µm"
           f"  {'✓ deployable' if ram_stat['fits'] else '✗ check RAM'}")
 
     # ── Save results ──────────────────────────────────────────────────────────
@@ -381,8 +395,9 @@ def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-ckpt",    default=str(CKPT_DIR / "fusion_distilled.pt"),
-                        help="Full-object distilled fusion model checkpoint")
+    parser.add_argument("--model-ckpt",    default=str(PRUNING_CKPT_DIR / "fusion_distilled.pt"),
+                        help="Full-object distilled fusion model checkpoint "
+                             "(use fusion_distilled_qat.pt for the QAT pipeline)")
     parser.add_argument("--output-suffix", default="",
                         help="Appended to output filenames, e.g. '_v2'")
     parser.add_argument("--calib-samples", type=int, default=DEFAULT_CALIB_SAMPLES,

@@ -13,11 +13,13 @@
 1. [Hardware Overview](#1-hardware-overview)
 2. [Software Stack](#2-software-stack)
 3. [Model Conversion Pipeline](#3-model-conversion-pipeline)
-   - 3.1 [PyTorch → ONNX](#31-pytorch--onnx)
-   - 3.2 [ONNX axes deduplication](#32-onnx-axes-deduplication)
-   - 3.3 [ONNX → TFLite (onnx2tf)](#33-onnx--tflite-onnx2tf)
-   - 3.4 [Choosing the right quantisation variant](#34-choosing-the-right-quantisation-variant)
-   - 3.5 [TFLite → C header (xxd)](#35-tflite--c-header-xxd)
+   - 3.1 [Model lineage: 2M two-tower → INT8 ONNX](#31-model-lineage-2m-two-tower--int8-onnx)
+   - 3.2 [Two conversion paths: why onnx2tf drifts](#32-two-conversion-paths-why-onnx2tf-drifts)
+   - 3.3 [ONNX preprocessing: static shapes + axes dedup](#33-onnx-preprocessing-static-shapes--axes-dedup)
+   - 3.4 [ONNX → TFLite via NXP onnx2tflite](#34-onnx--tflite-via-nxp-onnx2tflite)
+   - 3.5 [Accuracy validation and reproducible scripts](#35-accuracy-validation-and-reproducible-scripts)
+   - 3.6 [Deployment caveat: GELU / FlexErf](#36-deployment-caveat-gelu--flexerf)
+   - 3.7 [TFLite → C header (xxd)](#37-tflite--c-header-xxd)
 4. [Memory Budget and Layout](#4-memory-budget-and-layout)
    - 4.1 [MCXN947 memory map](#41-mcxn947-memory-map)
    - 4.2 [Fusion model budget](#42-fusion-model-budget)
@@ -90,8 +92,9 @@ The SRAMH region is physically contiguous with SRAM (no gap between 0x2005_FFFF 
 | SDK | MCUXpresso SDK v2.x for MCXN947 | Board support, clock config, LPUART driver |
 | ML runtime | TensorFlow Lite for Microcontrollers (TFLM) | Bundled as `tflm_lib` prebuilt static library in the eIQ middleware |
 | DSP | CMSIS-DSP → replaced by kiss_fft | `DESKTOP_SHIM` macro enables the substitution |
-| Conversion | onnx2tf | Python: `pip install onnx2tf` |
-| Conversion | torch.onnx | Bundled with PyTorch |
+| Quantize | torch.onnx + ONNX Runtime `quantize_static` | PyTorch → ONNX → INT8 QDQ ONNX |
+| Conversion | **NXP eiq-onnx2tflite** (`onnx2tflite` CLI) | QDQ-preserving ONNX → TFLite — `pip install eiq-onnx2tflite` |
+| ~~Conversion~~ | ~~onnx2tf~~ | ~~Re-quantizes from FP32 — **abandoned**, drifts to 68 µm (see §3.2)~~ |
 | Host script | pyserial, Pillow, numpy, pandas | Python host-side UART driver |
 
 ### TFLM in MCUXpresso
@@ -107,138 +110,243 @@ Because kiss_fft is already inside `tflm_lib`, **do not add `kiss_fft.c` to your
 
 ## 3. Model Conversion Pipeline
 
-### 3.1 PyTorch → ONNX
+> **Important — firmware sections below describe the earlier model.** Sections 5–12
+> (host script, op resolver, NHWC layout, INT8 I/O, memory budget) were written
+> against the first conversion attempt (onnx2tf, `full_integer_quant`, INT8 NHWC
+> I/O). That path was **abandoned** — it drifts to 68 µm (§3.2). The current
+> deployable model (`fusion_int8_qat_nxp.tflite`) keeps **FP32 NCHW** I/O and is
+> lossless. The firmware sections must be revisited (input dtype = float32, no
+> NHWC transpose, op list now includes GELU) once the GELU→tanh swap in §3.6
+> lands. Section 3 below is the authoritative, current conversion procedure.
 
-The fusion model (distilled ResNet image encoder + MultiScaleSensorCNN scalogram encoder) is exported from PyTorch to ONNX opset 18:
+### 3.1 Model lineage: 2M two-tower → INT8 ONNX
+
+The deployed model is the **two-tower fusion network** (`MultiScaleFusionModel`):
+a distilled ResNet image encoder (conv1 = 13 channels) plus a
+`MultiScaleSensorCNN` scalogram encoder, joined by a small fusion head. It reached
+the MCU through four stages, each with its own script under
+`fusion/two_tower/compression/`:
+
+| # | Stage | Script | Output | Test MAE |
+|---|---|---|---|---|
+| 1 | **QAT** — train the ~2 M-param two-tower with a quantization-aware INT8 image encoder (qnnpack, CPU) | `pruning/train.py` | QAT checkpoint | — |
+| 2 | **Prune + distill** — structured-prune the encoder and distil the QAT model into the compact two-tower | `pruning/distill.py` | `fusion_distilled_qat.pt` | **~20 µm** |
+| 3 | **Static INT8 → ONNX** — calibrate activations, write QDQ ONNX | `static_quant/export_onnx.py` | `fusion_int8_qat.onnx` | **20.63 µm** |
+| 4 | **ONNX → TFLite** (QDQ-preserving, NXP) | `static_quant/convert_tflite_nxp.py` | `fusion_int8_qat_nxp.tflite` | **20.63 µm** |
+
+**Why QAT + distillation matters.** Training the two-tower with QAT means the
+image encoder *learns* to be robust to INT8 rounding before quantization is ever
+applied, so the eventual INT8 model loses almost nothing relative to its FP32
+parent. Pruning + distillation then squeezes the ~2 M FP32 network down to a
+~1.5 MB INT8 footprint that fits the 2 MB flash, while distillation transfers the
+accuracy of the larger teacher into the compact student. The result is a
+compressed fusion model at **~20 µm test MAE** — competitive with the paper's
+image-only ResNet50 (19 µm) at a fraction of the size.
+
+**Stage 3 in detail (`export_onnx.py --output-suffix _qat`).** The distilled QAT
+checkpoint is wrapped to expose a single `wear_depth_um` output, exported to ONNX
+**opset 18**, then quantized with ONNX Runtime's `quantize_static`:
 
 ```python
-# experiments/phase6_deployment/export_onnx.py  (or convert_tflite.py Step 1)
-
-class Wrapper(torch.nn.Module):
-    def forward(self, image, scalogram):
-        out = self.m(image, scalogram)
-        return out[0] if isinstance(out, tuple) else out
-
-wrapper = Wrapper(model)
-wrapper.eval()
-
-torch.onnx.export(
-    wrapper, (img_dummy, scal_dummy),
-    "checkpoints/fusion_fp32.onnx",
-    opset_version=18,
-    input_names=["image", "scalogram"],
-    output_names=["prediction"],
-    dynamic_axes={"image": {0: "batch"}, "scalogram": {0: "batch"}, "prediction": {0: "batch"}},
+# fusion/two_tower/compression/static_quant/export_onnx.py
+quantize_static(
+    model_input  = "fusion_fp32_qat.onnx",
+    model_output = "fusion_int8_qat.onnx",
+    calibration_data_reader = reader,        # ~200 training samples, real preprocessing
+    quant_format    = QuantFormat.QDQ,        # standard QuantizeLinear/DequantizeLinear
+    per_channel     = False,                  # per-tensor — most MCU-backend-compatible
+    weight_type     = QuantType.QInt8,
+    activation_type = QuantType.QInt8,
+    extra_options   = {"ActivationSymmetric": True, "WeightSymmetric": True},
 )
 ```
 
-For the sensor-only model (`MultiScaleSensorCNN`) the export is simpler — single input `scalogram [1, 5, 64, 64]`. For the image-only ResNet variant, single input `image [1, 3, 224, 224]`.
-
-**Verify the export numerically before proceeding:**
-
-```python
-sess = onnxruntime.InferenceSession("checkpoints/fusion_fp32.onnx")
-onnx_out = sess.run(None, {"image": img_np, "scalogram": scal_np})[0]
-assert abs(onnx_out - pt_out) < 1e-3, "ONNX/PyTorch mismatch"
-```
-
-### 3.2 ONNX axes deduplication
-
-PyTorch's ONNX exporter (opset 18) sometimes emits `ReduceMean` / `ReduceMax` nodes that share a single `axes` initializer tensor. The `onnx2tf` converter (and NXP's eiq-onnx2tflite) misparsed these shared axes tensors as INT32, producing broken models. The fix is to deduplicate them so each Reduce node owns its own axes tensor:
-
-```python
-# experiments/compression/cwt/phase4_static_quant/convert_tflite.py — Step 2
-for node in model.graph.node:
-    if node.op_type in ("ReduceMean", "ReduceMax") and len(node.input) >= 2:
-        axes_name = node.input[1]
-        if axes_name in used_names:
-            # clone the initializer under a new name and redirect the node
-            new_init = numpy_helper.from_array(arr, name=f"{axes_name}_{node.name}")
-            model.graph.initializer.append(new_init)
-            node.input[1] = new_init.name
-        else:
-            used_names.add(axes_name)
-```
-
-This step is only needed if the model contains `ReduceMean` or `ReduceMax` with shared axes — inspect `onnx.load(...)` if unsure.
-
-### 3.3 ONNX → TFLite (onnx2tf)
+Layers that cannot go INT8 (GroupNorm, GELU, Sigmoid) are left FP32 automatically
+by the calibration pass. Static (not dynamic) quantization is essential: it
+calibrates INT8 *activations*, dropping peak inference RAM from ~1,289 KB
+(FP32 activations) to ~370 KB (INT8) — the difference between not fitting and
+fitting in 512 KB SRAM.
 
 ```bash
-pip install onnx2tf tensorflow
+# Reproduce stage 3 (run from thesis root):
+python fusion/two_tower/compression/static_quant/export_onnx.py \
+    --model-ckpt fusion/two_tower/compression/pruning/checkpoints/fusion_distilled_qat.pt \
+    --output-suffix _qat
+# → fusion/deployment/checkpoints/fusion_int8_qat.onnx   (1.5 MB, opset 18, QDQ)
+
+# Verify it (ONNX Runtime):
+python fusion/two_tower/compression/static_quant/eval_onnx.py \
+    --model fusion/deployment/checkpoints/fusion_int8_qat.onnx
+# → val 40.15 µm   test 20.63 µm
 ```
+
+`fusion_int8_qat.onnx` is the **source of truth** for everything downstream.
+
+### 3.2 Two conversion paths: why onnx2tf drifts
+
+There are two fundamentally different ways to turn the INT8 QDQ ONNX into TFLite:
+
+| | **Path A — re-quantize (onnx2tf)** | **Path B — preserve QDQ (NXP onnx2tflite)** |
+|---|---|---|
+| What it does | Discards the ONNX scales, runs a *fresh* INT8 calibration from the FP32 graph | Translates the existing per-tensor scales / zero-points **1:1** into TFLite quant params |
+| Calibration | New, independent (its own samples) | None — reuses the QAT+ORT calibration |
+| Result | **test 68.17 µm / val 84.24 µm** ✗ | **test 20.63 µm / val 40.10 µm** ✓ |
+
+Path A throws away the very calibration that QAT spent an entire training run
+getting right, then re-derives scales that disagree with the learned weights — so
+accuracy collapses (>3× worse). This was empirically confirmed, not assumed: the
+onnx2tf `integer_quant` TFLite measured **68 µm** on the test split. **Do not use
+onnx2tf for a QAT/QDQ model.**
+
+Path B is what TFLite's quantization scheme was designed for — INT8 weights, INT8
+activations, INT32 bias, identical to ONNX Runtime's QDQ scheme — so a faithful
+translation is *lossless in principle*. NXP's `eiq-onnx2tflite` package provides
+exactly this via the `onnx2tflite` CLI's `--qdq-aware-conversion` flag.
+
+```bash
+pip install eiq-onnx2tflite      # provides the `onnx2tflite` and `onnx2quant` CLIs
+which onnx2tflite                # gotcha: the command is `onnx2tflite`, NOT `eiq-onnx2tflite`
+```
+
+### 3.3 ONNX preprocessing: static shapes + axes dedup
+
+`onnx2tflite` needs two patches applied to `fusion_int8_qat.onnx` first. Both are
+automated in `convert_tflite_nxp.py`; described here so the *why* is on record.
+
+**1. Bake the batch dimension to 1.** The export uses a symbolic `batch` axis; the
+converter requires fully static shapes. `onnx.tools.update_model_dims` fixes
+`image→[1,3,224,224]`, `scalogram→[1,5,64,64]`, `wear_depth_um→[1,1]`, then
+`onnx.shape_inference.infer_shapes` propagates them.
+
+**2. Deduplicate the shared Reduce axes (opset-18 bug).** The three `ReduceMean`
+nodes (global-average-pool in the head/attention) all reference **one** shared
+INT64 `axes` initializer. While converting the first node, `onnx2tflite` downcasts
+that shared tensor to INT32 *in place*; the remaining two nodes then read INT32 and
+abort with:
+
+```
+[ERROR] [Code.INVALID_ONNX_OPERATOR] - ONNX `ReduceMean` has `axes` of type `INT32`, instead of INT64.
+```
+
+The tell is **2 errors for 3 nodes** — node 1 succeeds and corrupts the tensor for
+2 and 3. The fix is to give every Reduce node its own private INT64 axes
+initializer:
 
 ```python
-# experiments/compression/cwt/phase4_static_quant/convert_tflite.py — Step 4
-import onnx2tf
-
-onnx2tf.convert(
-    input_onnx_file_path="checkpoints/fusion_fp32_dedup.onnx",
-    output_folder_path="checkpoints/fusion_tflite",
-    non_verbose=True,
-    output_integer_quantized_tflite=True,
-    quant_type="per-channel",
-    custom_input_op_name_np_data_path=[
-        ["image",     "checkpoints/calib_data/calib_images.npy"],
-        ["scalogram", "checkpoints/calib_data/calib_scalograms.npy"],
-    ],
-)
+# convert_tflite_nxp.py — make_static_and_dedup()
+for n in graph.node:
+    if n.op_type in ("ReduceMean", "ReduceMax", ...) and n.input[1] in init:
+        arr  = numpy_helper.to_array(init[n.input[1]]).astype(np.int64)
+        name = f"{n.input[1]}_dedup_{k}"
+        graph.initializer.append(numpy_helper.from_array(arr.copy(), name))
+        n.input[1] = name     # redirect this node to its own copy
 ```
 
-**Calibration data** is a numpy `.npy` file of representative inputs (50–100 samples in NHWC layout for images, NHWC for scalograms). `onnx2tf` uses it to determine per-channel INT8 scale/zero_point for each activation tensor.
+### 3.4 ONNX → TFLite via NXP onnx2tflite
 
-> **Data layout note:** PyTorch uses NCHW internally, but onnx2tf converts the graph to NHWC (TFLite's default). The output TFLite model expects:
-> - `image`:     `[1, 224, 224, 3]` INT8 NHWC
-> - `scalogram`: `[1,  64,  64, 5]` INT8 NHWC
->
-> The host script and MCU firmware both apply the NCHW→NHWC transpose explicitly.
+With the patched static model, the conversion is a single command:
 
-### 3.4 Choosing the right quantisation variant
-
-`onnx2tf` produces several TFLite files. Only one is suitable for TFLM on a microcontroller:
-
-| File suffix | Weights | I/O tensors | Peak SRAM | Use for MCU? |
-|---|---|---|---|---|
-| `_float32.tflite` | FP32 | FP32 | ~600 KB | ✗ too large |
-| `_float16.tflite` | FP16 | FP32 | ~600 KB | ✗ no FP16 hardware |
-| `_integer_quant.tflite` | INT8 | **FP32** | ~370 KB | ✗ I/O conversion overhead |
-| **`_full_integer_quant.tflite`** | **INT8** | **INT8** | **~370 KB** | **✓ use this one** |
-
-**Use `_full_integer_quant.tflite`**: INT8 weights AND INT8 I/O tensors. The image input tensor is 147 KB as INT8 vs 602 KB as FP32 — essential to fit in the tensor arena.
-
-Inspect input quantisation params after conversion (needed for the host script):
-
-```python
-import tensorflow as tf
-interp = tf.lite.Interpreter("checkpoints/fusion_tflite/fusion_fp32_dedup_full_integer_quant.tflite")
-interp.allocate_tensors()
-for d in interp.get_input_details():
-    print(d["index"], d["name"], d["shape"], d["dtype"], d["quantization"])
-# Expected output:
-# 0  image      [1 224 224 3]  int8   (scale=0.0078125, zero_point=0)
-# 1  scalogram  [1  64  64 5]  int8   (scale=...,       zero_point=...)
+```bash
+onnx2tflite \
+    --qdq-aware-conversion \    # Path B: translate QDQ scales 1:1 (lossless)
+    --keep-io-tensors-format \  # keep NCHW FP32 I/O — matches the ONNX eval harness
+    --skip-shape-inference \    # shapes already static + inferred in §3.3
+    -o fusion_int8_qat_nxp.tflite \
+    <patched_static_dedup>.onnx
 ```
 
-### 3.5 TFLite → C header (xxd)
+The whole stage is wrapped in one script:
+
+```bash
+python fusion/two_tower/compression/static_quant/convert_tflite_nxp.py
+# Patched model: batch=1, deduplicated 3 Reduce* axes -> INT64
+# Output : fusion_int8_qat_nxp.tflite  (1189 KB, fits 2 MB flash: True)
+```
+
+The resulting TFLite has **FP32 NCHW I/O with INT8 internals** (QUANTIZE at the
+input, DEQUANTIZE at the output, INT8 weights + activations throughout):
+
+```
+INPUT   image       [1, 3, 224, 224]  float32
+INPUT   scalogram   [1, 5, 64, 64]    float32
+OUTPUT  wear_depth_um [1, 1]          float32
+```
+
+Keeping FP32 NCHW I/O (rather than INT8 NHWC) means the TFLite is fed *exactly*
+like the ONNX — no boundary quantization, no NHWC transpose — which is why the
+accuracy match in §3.5 is byte-faithful.
+
+### 3.5 Accuracy validation and reproducible scripts
+
+```bash
+python fusion/two_tower/compression/static_quant/eval_tflite_nxp.py
+# val    n=300  MAE=40.10 ± 59.33 µm
+# test   n=247  MAE=20.63 ± 20.14 µm
+```
+
+| Model | val MAE | test MAE | Size |
+|---|---|---|---|
+| `fusion_int8_qat.onnx` (source) | 40.15 | **20.63 µm** | 1554 KB |
+| **`fusion_int8_qat_nxp.tflite`** (NXP, deployable) | 40.10 | **20.63 µm** | **1189 KB** ✓ |
+| onnx2tf `integer_quant` (Path A, abandoned) | 84.24 | 68.17 µm | — |
+
+Test MAE matches the source ONNX to **0.01 µm**; the 0.05 µm val difference is
+floating-point rounding on the high-variance val split. The conversion is lossless.
+
+**Scripts (all under `fusion/two_tower/compression/static_quant/`):**
+
+| Script | Role |
+|---|---|
+| `export_onnx.py` | Stage 3 — distilled QAT `.pt` → INT8 QDQ ONNX |
+| `eval_onnx.py` | Evaluate any FP32/INT8 ONNX via ONNX Runtime |
+| `convert_tflite_nxp.py` | Stage 4 — patch ONNX + `onnx2tflite --qdq-aware-conversion` |
+| `eval_tflite_nxp.py` | Evaluate the NXP TFLite (full TF runtime; needs FlexErf) |
+| `results/nxp_tflite_results.json` | Recorded accuracy + caveats |
+| ~~`convert_tflite.py`~~ | ~~Old onnx2tf path — superseded (kept for reference)~~ |
+
+### 3.6 Deployment caveat: GELU / FlexErf
+
+The fusion head's **GELU** activations export an `Erf` op for which TFLite has no
+native kernel, so `onnx2tflite` emits **3 `FlexErf` (TF Select)** ops. These run
+fine under the desktop TensorFlow interpreter (how §3.5 validates) but are **not
+supported by TFLite-Micro** on the MCXN947 — `ai_edge_litert` / TFLM cannot
+allocate them.
+
+This does **not** affect the QDQ translation accuracy; it is purely an op-support
+issue. The fix for bare-metal deployment is to **retrain with a tanh-approximation
+GELU** (`nn.GELU(approximate="tanh")`), which lowers to a native `TANH` op, then
+re-run stages 3–4. Until that lands, `fusion_int8_qat_nxp.tflite` is validated and
+flash-fitting but runs only under the desktop runtime, not on-device.
+
+> GroupNorm decomposes cleanly into native ops (MEAN / SQUARED_DIFFERENCE / RSQRT /
+> SUB / MUL — 31 MEAN nodes), so it is **not** a blocker. `Erf` is the only
+> non-native op in the graph.
+
+### 3.7 TFLite → C header (xxd)
+
+Once the model is TFLM-native (post-§3.6 GELU swap), embed it as a flash array:
 
 ```bash
 # From the thesis root:
-xxd -i "checkpoints/fusion_tflite/fusion_fp32_dedup_full_integer_quant.tflite" \
-    > experiments/phase6_deployment/mcu_project/fusion_model_data.h
+xxd -i fusion/deployment/checkpoints/fusion_int8_qat_nxp.tflite \
+    > fusion/deployment/mcu_project/fusion_model_data.h
 
 # Rename identifiers to match the firmware:
 sed -i '' \
-  's/unsigned char checkpoints_fusion_tflite_[a-z_]*/const uint8_t g_model_data[] __attribute__((aligned(4))) =/' \
-  experiments/phase6_deployment/mcu_project/fusion_model_data.h
-
+  's/unsigned char .*_tflite\[\]/const uint8_t g_model_data[] __attribute__((aligned(4)))/' \
+  fusion/deployment/mcu_project/fusion_model_data.h
 sed -i '' \
-  's/unsigned int checkpoints_fusion_tflite_[a-z_]*/const uint32_t g_model_data_len =/' \
-  experiments/phase6_deployment/mcu_project/fusion_model_data.h
+  's/unsigned int .*_tflite_len/const uint32_t g_model_data_len/' \
+  fusion/deployment/mcu_project/fusion_model_data.h
 ```
 
-The resulting header declares `g_model_data[]` (1,259,584 bytes = 1.2 MB for the fusion model) and `g_model_data_len`. It must be added to the MCUXpresso project source directory and included in `main.c` as `#include "fusion_model_data.h"`.
+The header declares `g_model_data[]` (~1.2 MB) and `g_model_data_len`. Add it to
+the MCUXpresso project `source/` directory and `#include "fusion_model_data.h"` in
+`main.c`.
 
-> **Alignment note:** The `__attribute__((aligned(4)))` ensures 4-byte alignment of the model flatbuffer, which TFLM requires. Without it you may get a bus fault on the first `GetModel()` call.
+> **Alignment note:** `__attribute__((aligned(4)))` ensures 4-byte alignment of the
+> model flatbuffer, which TFLM requires. Without it you may get a bus fault on the
+> first `GetModel()` call.
 
 ---
 
@@ -605,7 +713,7 @@ PRINTF("READY\r\n");
 
 ### 7.4 CWT: cwt_mcu.h / cwt_mcu.c
 
-Located in `experiments/cwt_c/`. Key constants:
+Located in `sensor/deployment/cwt_c/`. Key constants:
 
 ```c
 #define CWT_MCU_N_KER     2048   // FFT size (controls workspace = 2 × 2048 × 4 = 16 KB)
@@ -653,7 +761,7 @@ After all 5 channels:
 
 ### Host script
 
-`experiments/phase6_deployment/send_fusion_uart.py`
+`fusion/deployment/send_fusion_uart.py`
 
 **Image preprocessing pipeline:**
 ```
@@ -669,7 +777,7 @@ Raw image (JPG/PNG)
 
 **Usage:**
 ```bash
-python experiments/phase6_deployment/send_fusion_uart.py \
+python fusion/deployment/send_fusion_uart.py \
     --port /dev/cu.usbmodemXXXXXX \
     --csv  data/raw/Set4/sensordata/<file>.csv \
     --image data/raw/Set4/<flank_image>.jpg \
@@ -903,7 +1011,7 @@ After successful flash and boot, validate the MCU prediction against the Python 
 ### Step 1 — MCU run
 
 ```bash
-python experiments/phase6_deployment/send_fusion_uart.py \
+python fusion/deployment/send_fusion_uart.py \
     --port /dev/cu.usbmodemXXXXXX \
     --csv  data/raw/Set4/sensordata/<file>.csv \
     --image data/raw/Set4/<flank_image>.jpg \
@@ -919,7 +1027,7 @@ import tensorflow as tf, numpy as np
 from PIL import Image
 
 interp = tf.lite.Interpreter(
-    "checkpoints/fusion_tflite/fusion_fp32_dedup_full_integer_quant.tflite")
+    "fusion/deployment/checkpoints/fusion_int8_qat_nxp.tflite")
 interp.allocate_tensors()
 inp = interp.get_input_details()
 out = interp.get_output_details()

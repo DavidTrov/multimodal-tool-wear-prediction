@@ -1,22 +1,26 @@
 """
-Compression Phase 3 — INT8 Quantization of the Joint-Pruned Fusion Model.
+Compression — Dynamic INT8 Quantization of the Distilled Fusion Model.
 
-Applies dynamic INT8 quantization (weight-only) to the full pruned pipeline.
-The joint-pruned model is saved as a full model object; this script loads it
-directly and measures actual INT8 MAE on val and test.
+Applies dynamic INT8 quantization (weight-only) to the distilled fusion model
+produced by fusion/two_tower/compression/pruning/distill.py.
 
 Dynamic quantization: Conv2d + Linear weights → INT8 at save time.
 Activations remain FP32 at inference. No calibration data required.
 
+Note: this measures the accuracy cost of weight-only INT8 compression. For a
+fully deployable INT8 model with calibrated activations, use
+static_quant/export_onnx.py instead (ONNX QDQ format, lower RAM).
+
 Pre-requisite
 -------------
-    python experiments/compression/cwt/fusion_pruning/train.py
+    python fusion/two_tower/compression/pruning/distill.py
 
 Usage
 -----
-    python experiments/compression/cwt/phase3_quantization/quantize.py
-    python experiments/compression/cwt/phase3_quantization/quantize.py \\
-        --model-ckpt checkpoints/fusion_pruned_50.pt --output-suffix _50
+    python fusion/two_tower/compression/quantization/quantize.py
+    python fusion/two_tower/compression/quantization/quantize.py \\
+        --model-ckpt fusion/two_tower/compression/pruning/checkpoints/fusion_distilled_qat.pt \\
+        --output-suffix _qat
 
 Run from the thesis root.
 """
@@ -39,8 +43,8 @@ from src.metrics import mae
 DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR      = ROOT / "checkpoints"
-RESULTS_DIR   = Path(__file__).parent / "results"
+PRUNING_CKPT_DIR = Path(__file__).parents[1] / "pruning" / "checkpoints"
+RESULTS_DIR      = Path(__file__).parent / "results"
 
 NUM_WORKERS = 0
 
@@ -158,12 +162,12 @@ def run(args):
         print(f"  Gap   : {gap_kb:>+7.0f} KB  ✓ fits in flash")
 
     print("\n── Baselines ────────────────────────────────────────────────────────")
-    print(f"  Paper ResNet50 (image-only)              test MAE : 19.00 µm")
-    print(f"  Phase 5c-ii compressed fusion (Adam)     test MAE : 17.64 µm")
-    print(f"  Phase 5   standard fusion (ResNet18)     test MAE : 22.57 µm")
-    print(f"  Phase 1   image-only (ResNet18)          test MAE : 23.17 µm")
-    print(f"  Phase 4   sensor-only (MultiScaleCNN)    test MAE : 24.96 µm")
-    print(f"  Joint-pruned INT8 (this run)             test MAE : {int8_results['test']['mae']:.2f} µm")
+    print(f"  Paper ResNet50 (image-only)                    test MAE : 19.00 µm")
+    print(f"  Compressed QAT fusion FP32 (phase5)            val  MAE : 38.74 µm")
+    print(f"  Compressed FP32 fusion (phase5, non-QAT)       test MAE : 15.55 µm")
+    print(f"  Phase 1   image-only (ResNet18)                test MAE : 23.17 µm")
+    print(f"  Phase 4   sensor-only (MultiScaleCNN)          test MAE : 29.27 µm")
+    print(f"  Distilled+dynamic-INT8 (this run)              test MAE : {int8_results['test']['mae']:.2f} µm")
 
     # ── Save ──────────────────────────────────────────────────────────────────
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -192,7 +196,9 @@ def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-ckpt",    default=str(CKPT_DIR / "fusion_pruned.pt"))
-    parser.add_argument("--output-suffix", default="")
+    parser.add_argument("--model-ckpt",    default=str(PRUNING_CKPT_DIR / "fusion_distilled.pt"),
+                        help="Full-object distilled fusion model (use fusion_distilled_qat.pt for QAT pipeline)")
+    parser.add_argument("--output-suffix", default="",
+                        help="Appended to results filename, e.g. '_qat'")
     args = parser.parse_args()
     run(args)

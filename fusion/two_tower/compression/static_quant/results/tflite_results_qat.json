@@ -1,0 +1,13 @@
+{
+  "source_fp32_onnx": "/Users/david/Projects/University/Maastricht University/Thesis/fusion/deployment/checkpoints/fusion_fp32_qat.onnx",
+  "tflite_path": "/Users/david/Projects/University/Maastricht University/Thesis/fusion/deployment/checkpoints/fusion_int8_qat.tflite",
+  "calib_samples": 200,
+  "int8_tflite_kb": 1230.1,
+  "fits_in_flash": true,
+  "tflite_int8": {
+    "val_mae": 84.24,
+    "val_std": 82.57,
+    "test_mae": 68.17,
+    "test_std": 45.75
+  }
+}
