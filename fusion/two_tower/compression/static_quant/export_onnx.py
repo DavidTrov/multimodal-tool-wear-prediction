@@ -101,6 +101,29 @@ BATCH_SIZE            = 16
 NUM_WORKERS           = 0
 
 
+# ── GELU → tanh-GELU swap (TFLite-Micro deployability) ─────────────────────────
+
+def swap_gelu_to_tanh(module: nn.Module) -> int:
+    """
+    Recursively replace nn.GELU(approximate='none') with approximate='tanh'.
+
+    The default ('none') GELU exports an `Erf` op that TFLite has no native
+    kernel for, forcing 3 FlexErf (TF-Select) ops that TFLite-Micro cannot run.
+    The tanh approximation lowers to a native TANH. The two activations are
+    numerically equivalent to ~3e-4 on the tiny post-LayerNorm projection
+    vectors here, so accuracy is unchanged (verified by check_gelu_swap.py:
+    test MAE 20.48 µm identical before/after).
+    """
+    n = 0
+    for name, child in module.named_children():
+        if isinstance(child, nn.GELU) and child.approximate == "none":
+            setattr(module, name, nn.GELU(approximate="tanh"))
+            n += 1
+        else:
+            n += swap_gelu_to_tanh(child)
+    return n
+
+
 # ── ONNX export wrapper ────────────────────────────────────────────────────────
 
 class FusionExportWrapper(nn.Module):
@@ -244,6 +267,12 @@ def run(args):
     print(f"Loading : {model_ckpt.name}")
     model = torch.load(model_ckpt, map_location=device, weights_only=False)
     model = model.to(device).eval()
+
+    # Swap erf-GELU -> tanh-GELU so the exported graph carries native TANH
+    # instead of Erf (which becomes a non-TFLM FlexErf op). Accuracy-neutral.
+    n_swapped = swap_gelu_to_tanh(model)
+    print(f"GELU    : swapped {n_swapped} erf-GELU -> tanh-GELU (native TFLite TANH)")
+
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Params  : {n_params:,}  ({n_params / 1024:.0f} KB INT8 weights)\n")
 
