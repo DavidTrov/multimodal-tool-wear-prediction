@@ -56,8 +56,8 @@ extern "C" {
 #define SENSOR_PIPELINE_POOL_BYTES   \
     (SENSOR_PIPELINE_MAX_SAMPLES * 4u + SENSOR_PIPELINE_WKSP_BYTES)  /* ~391 KB */
 
-/* Image input dimensions (INT8, NHWC layout — TFLite default).
- * The fusion model expects input(0) = image [1, 224, 224, 3] INT8. */
+/* Image input dimensions (INT8, NCHW layout — ONNX-origin model).
+ * The fusion model expects input(0) = image [1, 3, 224, 224] INT8. */
 #define SENSOR_PIPELINE_IMG_H      224u
 #define SENSOR_PIPELINE_IMG_W      224u
 #define SENSOR_PIPELINE_IMG_C      3u
@@ -130,7 +130,7 @@ SensorPipeline *sensor_pipeline_init(uint8_t       *pool,
  * Write SENSOR_PIPELINE_IMG_BYTES of INT8 pixel data into this buffer before
  * calling sensor_pipeline_infer().
  *
- * Pixel layout: NHWC (height × width × channels, RGB), INT8.
+ * Pixel layout: NCHW (channels × height × width, RGB), INT8.
  * Quantisation: q = clamp(round(x_normalised / scale) + zero_point, -128, 127)
  *   where x_normalised = (pixel_float - mean) / std  with ImageNet statistics.
  *   scale and zero_point are printed by sensor_pipeline_init() over UART.

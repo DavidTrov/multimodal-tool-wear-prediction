@@ -9,7 +9,7 @@ The MCU protocol (per-channel):
      b. Host: one float per line (the channel column), then "END"
      c. MCU: computes CWT
   3. MCU: TFLite init, prints quantisation params, "SEND_IMAGE"
-  4. Host: sends 150,528 raw INT8 bytes (224×224×3 NHWC)
+  4. Host: sends 150,528 raw INT8 bytes (3×224×224 NCHW)
   5. MCU: "Predicted tool wear: XX.X um"
 
 Usage:
@@ -22,12 +22,13 @@ Usage:
 Optional flags:
     --baud 921600        Higher baud rate (default 115200)
     --no-mask            Skip cutting-mask extraction
-    --img-scale FLOAT    Override image quantisation scale   (default: 0.0078125)
+    --img-scale FLOAT    Override image quantisation scale   (default: 0.020787)
     --img-zp    INT      Override image quantisation zero_point (default: 0)
 """
 
 import argparse
 import ast
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -55,9 +56,9 @@ TIMEOUT_IMAGE  = 120   # seconds to wait for "SEND_IMAGE" after last CWT
 TIMEOUT_PRED   = 120   # seconds to wait for prediction after image
 
 # Image quantisation params from the TFLite model
-# (fusion_fp32_dedup_full_integer_quant.tflite, input index 0):
-#   scale = 0.0078125 = 1/128,  zero_point = 0
-DEFAULT_IMG_SCALE = 0.0078125
+# (fusion_int8_qat_nxp_io.tflite, input index 0 — see io_quant.json):
+#   scale = 0.020787402987480164,  zero_point = 0
+DEFAULT_IMG_SCALE = 0.020787402987480164
 DEFAULT_IMG_ZP    = 0
 
 # ImageNet normalisation statistics
@@ -66,6 +67,31 @@ IMAGENET_STD  = [0.229, 0.224, 0.225]
 
 # Sets CSV path (relative to repo root)
 SETS_CSV = ROOT / "data" / "raw" / "sets.csv"
+
+# --reset support: reboot the target over SWD (via the debug probe) so the MCU
+# re-emits its one-shot "READY" while the host already has the port open. The
+# physical RESET button can drop the MCU-Link VCOM; an SWD reflash-and-reset
+# does not. flash "load" resets the target on completion.
+DEFAULT_LINKSERVER = "/Applications/LinkServer_25.6.131/LinkServer"
+DEFAULT_DEVICE     = "MCXN947:FRDM-MCXN947"
+DEFAULT_AXF        = (
+    "/Users/david/Projects/University/Maastricht University/"
+    "frdmmcxn947_tflm_cifar10_cm33_core0/Debug/"
+    "frdmmcxn947_tflm_cifar10_cm33_core0.axf"
+)
+
+
+def reset_target(linkserver: str, device: str, axf: str) -> subprocess.Popen:
+    """Reboot the target via the debug probe, concurrently with READY draining.
+
+    Runs LinkServer flash-load in the background: it programs the image (no-op
+    if unchanged) and issues a system reset on completion, which reboots the
+    firmware so it re-prints "READY". Returns the Popen so the caller can drain
+    the serial port while this runs."""
+    cmd = [linkserver, "flash", device, "load", axf]
+    print("Resetting target over SWD (reboot to re-emit READY)...", flush=True)
+    return subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
 
 # ---------------------------------------------------------------------------
 # Helper: load crop coordinates from sets.csv
@@ -93,22 +119,25 @@ def preprocess_image_int8(
 ) -> bytes:
     """
     Crop → resize 224×224 → ImageNet-normalise → quantise to INT8 → raw bytes.
-    Returns 150,528 bytes in NHWC layout (RGB channels last).
+    Returns 150,528 bytes in NCHW layout (channels first: 3 × 224 × 224).
+    Model input is [1, 3, 224, 224] INT8 NCHW.
     """
     img = Image.open(img_path).convert("RGB")
     img = img.crop(crop_coords)
     img = img.resize((224, 224), Image.BILINEAR)
 
-    x = np.array(img, dtype=np.float32) / 255.0         # (224, 224, 3)
+    x = np.array(img, dtype=np.float32) / 255.0         # (224, 224, 3) HWC
 
     mean = np.array(IMAGENET_MEAN, dtype=np.float32)
     std  = np.array(IMAGENET_STD,  dtype=np.float32)
-    x    = (x - mean) / std
+    x    = (x - mean) / std                              # (224, 224, 3) HWC
+
+    x = x.transpose(2, 0, 1)                             # (3, 224, 224) CHW → NCHW
 
     q = np.round(x / img_scale).astype(np.int32) + img_zp
     q = np.clip(q, -128, 127).astype(np.int8)
 
-    return q.tobytes()   # 150,528 bytes
+    return q.tobytes()   # 150,528 bytes in NCHW order
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +211,10 @@ def send_and_receive(
     baud:      int,
     df:        pd.DataFrame,
     img_bytes: bytes,
+    reset:     bool = False,
+    linkserver: str = DEFAULT_LINKSERVER,
+    device:    str = DEFAULT_DEVICE,
+    axf:       str = DEFAULT_AXF,
 ) -> str:
     """
     Full per-channel protocol:
@@ -198,6 +231,10 @@ def send_and_receive(
         ser.reset_output_buffer()
 
         # ── 1. Wait for READY ────────────────────────────────────────────
+        # Fire the reset AFTER the port is open and draining starts, so the
+        # one-shot "READY" lands while we're listening (no boot-time race).
+        if reset:
+            reset_target(linkserver, device, axf)
         print("Waiting for MCU READY...", flush=True)
         drain_until(ser, "READY", TIMEOUT_READY)
 
@@ -262,6 +299,15 @@ def main():
                         help=f"Image INT8 quantisation scale (default {DEFAULT_IMG_SCALE})")
     parser.add_argument("--img-zp",    type=int,   default=DEFAULT_IMG_ZP,
                         help=f"Image INT8 quantisation zero_point (default {DEFAULT_IMG_ZP})")
+    parser.add_argument("--reset",     action="store_true",
+                        help="Reboot the target over the debug probe after opening "
+                             "the port, so the MCU re-emits READY (avoids the boot race)")
+    parser.add_argument("--linkserver", default=DEFAULT_LINKSERVER,
+                        help=f"LinkServer binary path (default {DEFAULT_LINKSERVER})")
+    parser.add_argument("--device",    default=DEFAULT_DEVICE,
+                        help=f"LinkServer device:board (default {DEFAULT_DEVICE})")
+    parser.add_argument("--axf",       default=DEFAULT_AXF,
+                        help="Path to the .axf to reflash/reset with --reset")
     args = parser.parse_args()
 
     csv_path = Path(args.csv)
@@ -299,7 +345,9 @@ def main():
           f"(scale={args.img_scale}, zp={args.img_zp})")
 
     # ── UART round-trip ──────────────────────────────────────────────────
-    result = send_and_receive(args.port, args.baud, df, img_bytes)
+    result = send_and_receive(args.port, args.baud, df, img_bytes,
+                              reset=args.reset, linkserver=args.linkserver,
+                              device=args.device, axf=args.axf)
     print(f"\n=== Result ===\n{result}")
 
 

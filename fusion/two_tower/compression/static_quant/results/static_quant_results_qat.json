@@ -5,8 +5,8 @@
   "opset_version": 18,
   "calib_samples": 200,
   "n_params": 1126695,
-  "fp32_onnx_kb": 383.1,
-  "int8_onnx_kb": 1572.2,
+  "fp32_onnx_kb": 387.0,
+  "int8_onnx_kb": 1577.3,
   "fp32": {
     "val_mae": 39.87,
     "val_std": 57.54,
@@ -14,14 +14,14 @@
     "test_std": 19.35
   },
   "int8": {
-    "val_mae": 40.33,
-    "val_std": 59.89,
-    "test_mae": 20.52,
-    "test_std": 20.43
+    "val_mae": 40.16,
+    "val_std": 58.93,
+    "test_mae": 20.84,
+    "test_std": 20.42
   },
   "accuracy_drop": {
-    "val": 0.46,
-    "test": 0.04
+    "val": 0.29,
+    "test": 0.36
   },
   "ram": {
     "dynamic_quant_fp32_acts": {
