@@ -61,8 +61,8 @@ struct SensorPipeline {
     float                          *scalogram;      /* caller-owned, in SRAMX */
     const tflite::Model            *model;
     tflite::MicroInterpreter       *interpreter;
-    TfLiteTensor                   *input_tensor;   /* input(0) = image [1,224,224,3] INT8 */
-    TfLiteTensor                   *scalo_tensor;   /* input(1) = scalogram [1,64,64,5] INT8 */
+    TfLiteTensor                   *input_tensor;   /* input(0) = image [1,3,224,224] INT8 NCHW */
+    TfLiteTensor                   *scalo_tensor;   /* input(1) = scalogram [1,5,64,64] INT8 NCHW */
     TfLiteTensor                   *output_tensor;
 };
 
@@ -72,12 +72,14 @@ static SensorPipeline s_pipeline;
 
 /* Op resolver — list every builtin op present in the TFLite model.
  *
- * Determined by parsing the flatbuffer operator_codes table (19 ops):
+ * Determined by enumerating the flatbuffer operator codes (20 ops):
  *   QUANTIZE, CONV_2D, RESHAPE, TRANSPOSE, DEQUANTIZE, RSQRT, MEAN,
  *   SQUARED_DIFFERENCE, ADD, SUB, MUL, RELU, CONCATENATION, MAX_POOL_2D,
- *   AVERAGE_POOL_2D, FULLY_CONNECTED, LOGISTIC, REDUCE_MAX, SUM
+ *   FULLY_CONNECTED, LOGISTIC, PAD, PADV2, SQUARE, TANH
+ * (SQUARE/TANH and the MULs come from the Pow-free GELU-tanh approximation;
+ *  PAD/PADV2 from ONNX→TFLite conv padding.)
  */
-static tflite::MicroMutableOpResolver<19> s_resolver;
+static tflite::MicroMutableOpResolver<20> s_resolver;
 
 static tflite::MicroInterpreter *s_interpreter_storage = nullptr;
 /* Use placement-new to construct interpreter into static storage without heap. */
@@ -141,7 +143,7 @@ SensorPipeline *sensor_pipeline_init(uint8_t       *pool,
         return nullptr;
     }
 
-    /* Register ops — exactly the 19 ops present in the model */
+    /* Register ops — exactly the 20 ops present in the model */
     s_resolver.AddQuantize();
     s_resolver.AddConv2D();
     s_resolver.AddReshape();
@@ -156,11 +158,12 @@ SensorPipeline *sensor_pipeline_init(uint8_t       *pool,
     s_resolver.AddRelu();
     s_resolver.AddConcatenation();
     s_resolver.AddMaxPool2D();
-    s_resolver.AddAveragePool2D();
     s_resolver.AddFullyConnected();
     s_resolver.AddLogistic();
-    s_resolver.AddReduceMax();
-    s_resolver.AddSum();
+    s_resolver.AddPad();
+    s_resolver.AddPadV2();
+    s_resolver.AddSquare();
+    s_resolver.AddTanh();
 
     /* Construct interpreter in-place using the full pool as tensor arena.
      * 391 KB available; ~370 KB needed at peak. */
@@ -188,20 +191,20 @@ SensorPipeline *sensor_pipeline_init(uint8_t       *pool,
     s_pipeline.output_tensor  = s_interpreter_storage->output(0);
 
     /* Validate expected I/O shapes */
-    /* input(0): image [1, 224, 224, 3] INT8 NHWC */
+    /* input(0): image [1, 3, 224, 224] INT8 NCHW */
     TfLiteIntArray *img_dims = s_pipeline.input_tensor->dims;
     if (img_dims->size != 4 ||
-        img_dims->data[0] != 1 || img_dims->data[1] != 224 ||
-        img_dims->data[2] != 224 || img_dims->data[3] != 3) {
-        PRINTF("[pipeline] ERROR: unexpected image input shape (expected [1,224,224,3])\r\n");
+        img_dims->data[0] != 1 || img_dims->data[1] != 3 ||
+        img_dims->data[2] != 224 || img_dims->data[3] != 224) {
+        PRINTF("[pipeline] ERROR: unexpected image input shape (expected [1,3,224,224])\r\n");
         return nullptr;
     }
-    /* input(1): scalogram [1, 64, 64, 5] INT8 NHWC */
+    /* input(1): scalogram [1, 5, 64, 64] INT8 NCHW */
     TfLiteIntArray *scalo_dims = s_pipeline.scalo_tensor->dims;
     if (scalo_dims->size != 4 ||
-        scalo_dims->data[0] != 1 || scalo_dims->data[1] != 64 ||
-        scalo_dims->data[2] != 64 || scalo_dims->data[3] != 5) {
-        PRINTF("[pipeline] ERROR: unexpected scalogram input shape (expected [1,64,64,5])\r\n");
+        scalo_dims->data[0] != 1 || scalo_dims->data[1] != 5 ||
+        scalo_dims->data[2] != 64 || scalo_dims->data[3] != 64) {
+        PRINTF("[pipeline] ERROR: unexpected scalogram input shape (expected [1,5,64,64])\r\n");
         return nullptr;
     }
 
@@ -236,34 +239,21 @@ SensorPipelineStatus sensor_pipeline_infer(SensorPipeline *pipeline,
     /* input(0) = image: already populated by the caller via
      * sensor_pipeline_image_input_ptr() before this call. */
 
-    /* input(1) = scalogram: copy from SRAMX buffer [5,64,64] (NCHW) →
-     * TFLite NHWC layout [64,64,5], quantising float32 to INT8 if needed.
-     *
-     * CWT stores: scalogram[ch * 64*64 + h * 64 + w]  (NCHW)
-     * TFLite wants: scalo_in[h * 64*5 + w * 5 + ch]   (NHWC)            */
-    static constexpr int SCH = 5, SH = 64, SW = 64;
+    /* input(1) = scalogram [1,5,64,64] NCHW. The CWT buffer is already stored
+     * as [ch][h][w] = NCHW, identical to the model layout, so the copy is a
+     * straight element-wise pass (no transpose). */
+    static constexpr int SCALO_FLOATS =
+        SENSOR_PIPELINE_SCALOGRAM_FLOATS;  /* 5 * 64 * 64 */
 
     if (scalo_in->type == kTfLiteFloat32) {
-        /* Transpose NCHW → NHWC in float */
-        float *dst = scalo_in->data.f;
-        for (int h = 0; h < SH; h++)
-            for (int w = 0; w < SW; w++)
-                for (int c = 0; c < SCH; c++)
-                    dst[h * SW * SCH + w * SCH + c] =
-                        scalogram[c * SH * SW + h * SW + w];
+        memcpy(scalo_in->data.f, scalogram, SCALO_FLOATS * sizeof(float));
     } else if (scalo_in->type == kTfLiteInt8) {
-        /* Transpose + quantise */
         const float scale = scalo_in->params.scale;
         const int   zp    = scalo_in->params.zero_point;
-        for (int h = 0; h < SH; h++) {
-            for (int w = 0; w < SW; w++) {
-                for (int c = 0; c < SCH; c++) {
-                    float val = scalogram[c * SH * SW + h * SW + w];
-                    int   q   = static_cast<int>(roundf(val / scale)) + zp;
-                    scalo_in->data.int8[h * SW * SCH + w * SCH + c] =
-                        static_cast<int8_t>(q < -128 ? -128 : (q > 127 ? 127 : q));
-                }
-            }
+        for (int i = 0; i < SCALO_FLOATS; i++) {
+            int q = static_cast<int>(roundf(scalogram[i] / scale)) + zp;
+            scalo_in->data.int8[i] =
+                static_cast<int8_t>(q < -128 ? -128 : (q > 127 ? 127 : q));
         }
     } else {
         PRINTF("[pipeline] ERROR: unsupported scalogram tensor type %d\r\n",

@@ -3,12 +3,8 @@
     "scale": 0.020787402987480164,
     "zero_point": 0
   },
-  "scalogram": {
-    "scale": 0.007874015718698502,
-    "zero_point": 0
-  },
   "wear_depth_um": {
-    "scale": 1.3107593059539795,
+    "scale": 3.37503981590271,
     "zero_point": 0
   }
 }

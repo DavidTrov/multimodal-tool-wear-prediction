@@ -103,21 +103,42 @@ NUM_WORKERS           = 0
 
 # ── GELU → tanh-GELU swap (TFLite-Micro deployability) ─────────────────────────
 
+class TanhGELU(nn.Module):
+    """
+    tanh-approximation GELU written to avoid the ONNX `Pow` op.
+
+    nn.GELU(approximate='tanh') is mathematically what we want, but at opset 18
+    torch lowers it to a decomposition containing `Pow(x, 3)`. The NXP eIQ
+    TFLite-Micro runtime has NO POW kernel, so the model fails to build. Writing
+    the cube as x*x*x emits plain MUL ops instead, which TFLite-Micro supports.
+
+    Formula (identical to nn.GELU(approximate='tanh')):
+        0.5 * x * (1 + tanh( sqrt(2/pi) * (x + 0.044715 * x^3) ))
+    """
+    SQRT_2_OVER_PI = 0.7978845608028654  # sqrt(2/pi)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x3 = x * x * x                                    # MUL, MUL (no POW)
+        inner = self.SQRT_2_OVER_PI * (x + 0.044715 * x3)
+        return 0.5 * x * (1.0 + torch.tanh(inner))
+
+
 def swap_gelu_to_tanh(module: nn.Module) -> int:
     """
-    Recursively replace nn.GELU(approximate='none') with approximate='tanh'.
+    Recursively replace every nn.GELU with TanhGELU (Pow-free tanh approximation).
 
-    The default ('none') GELU exports an `Erf` op that TFLite has no native
-    kernel for, forcing 3 FlexErf (TF-Select) ops that TFLite-Micro cannot run.
-    The tanh approximation lowers to a native TANH. The two activations are
-    numerically equivalent to ~3e-4 on the tiny post-LayerNorm projection
-    vectors here, so accuracy is unchanged (verified by check_gelu_swap.py:
-    test MAE 20.48 µm identical before/after).
+    The default ('none') GELU exports an `Erf` op with no native TFLite kernel
+    (3 FlexErf / TF-Select ops). The tanh approximation lowers to native TANH,
+    but PyTorch's built-in tanh-GELU still emits `Pow(x,3)` — which TFLite-Micro
+    also lacks. TanhGELU computes the same function with x*x*x (MUL) so the graph
+    carries only MUL/ADD/TANH. Numerically equivalent to ~3e-4 on the tiny
+    post-LayerNorm projection vectors here, so accuracy is unchanged (verified by
+    check_gelu_swap.py: test MAE 20.48 µm identical before/after).
     """
     n = 0
     for name, child in module.named_children():
-        if isinstance(child, nn.GELU) and child.approximate == "none":
-            setattr(module, name, nn.GELU(approximate="tanh"))
+        if isinstance(child, nn.GELU):
+            setattr(module, name, TanhGELU())
             n += 1
         else:
             n += swap_gelu_to_tanh(child)
