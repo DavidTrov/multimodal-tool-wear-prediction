@@ -1,0 +1,10 @@
+{
+  "scalogram": {
+    "scale": 0.007874015718698502,
+    "zero_point": 0
+  },
+  "wear_um": {
+    "scale": 1.156541109085083,
+    "zero_point": 0
+  }
+}

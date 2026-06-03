@@ -1,0 +1,49 @@
+{
+  "model": "multiscale_sensor_cnn",
+  "source": "phase4_multiscale_sgdm_best.pt",
+  "n_params": 244365,
+  "int8_kb": 238.6,
+  "fp32": {
+    "val_mae": 51.48,
+    "val_std": 55.31,
+    "test_mae": 29.27,
+    "test_std": 25.89
+  },
+  "int8_onnx": {
+    "val_mae": 51.65,
+    "val_std": 55.08,
+    "test_mae": 28.93,
+    "test_std": 25.78,
+    "size_kb": 349.0
+  },
+  "tflite": {
+    "fp32_io": {
+      "val_mae": 51.38,
+      "val_std": 55.14,
+      "test_mae": 28.86,
+      "test_std": 25.78,
+      "flex_ops": 0
+    },
+    "int8_io": {
+      "val_mae": 51.38,
+      "val_std": 55.14,
+      "test_mae": 28.86,
+      "test_std": 25.78,
+      "flex_ops": 0
+    }
+  },
+  "fp32_islands": [
+    "InstanceNormalization",
+    "Sigmoid"
+  ],
+  "io_quant_params": {
+    "scalogram": {
+      "scale": 0.007874015718698502,
+      "zero_point": 0
+    },
+    "wear_um": {
+      "scale": 1.156541109085083,
+      "zero_point": 0
+    }
+  }
+}
