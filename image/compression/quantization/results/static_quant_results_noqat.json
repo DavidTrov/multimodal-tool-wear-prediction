@@ -1,0 +1,107 @@
+{
+  "2m": {
+    "budget": "2m",
+    "source": "distilled_fp32_noqat",
+    "n_params": 1980200,
+    "int8_kb": 1933.8,
+    "fp32": {
+      "val_mae": 33.85,
+      "test_mae": 20.8
+    },
+    "int8_onnx": {
+      "val_mae": 32.88,
+      "test_mae": 23.14,
+      "size_kb": 2057.0
+    },
+    "tflite": {
+      "fp32_io": {
+        "val_mae": 32.82,
+        "test_mae": 23.15
+      },
+      "int8_io": {
+        "val_mae": 32.82,
+        "test_mae": 23.15
+      }
+    },
+    "io_quant_params": {
+      "image": {
+        "scale": 0.020787402987480164,
+        "zero_point": 0
+      },
+      "wear_depth_um": {
+        "scale": 2.962824821472168,
+        "zero_point": 0
+      }
+    }
+  },
+  "1p5m": {
+    "budget": "1p5m",
+    "source": "distilled_fp32_noqat",
+    "n_params": 1493182,
+    "int8_kb": 1458.2,
+    "fp32": {
+      "val_mae": 38.57,
+      "test_mae": 29.83
+    },
+    "int8_onnx": {
+      "val_mae": 38.85,
+      "test_mae": 38.92,
+      "size_kb": 1580.0
+    },
+    "tflite": {
+      "fp32_io": {
+        "val_mae": 38.86,
+        "test_mae": 38.94
+      },
+      "int8_io": {
+        "val_mae": 38.86,
+        "test_mae": 38.94
+      }
+    },
+    "io_quant_params": {
+      "image": {
+        "scale": 0.020787402987480164,
+        "zero_point": 0
+      },
+      "wear_depth_um": {
+        "scale": 6.338005542755127,
+        "zero_point": 0
+      }
+    }
+  },
+  "1m": {
+    "budget": "1m",
+    "source": "distilled_fp32_noqat",
+    "n_params": 993186,
+    "int8_kb": 969.9,
+    "fp32": {
+      "val_mae": 42.99,
+      "test_mae": 30.84
+    },
+    "int8_onnx": {
+      "val_mae": 47.71,
+      "test_mae": 34.38,
+      "size_kb": 1091.0
+    },
+    "tflite": {
+      "fp32_io": {
+        "val_mae": 47.71,
+        "test_mae": 34.38
+      },
+      "int8_io": {
+        "val_mae": 47.71,
+        "test_mae": 34.38
+      }
+    },
+    "io_quant_params": {
+      "image": {
+        "scale": 0.020787402987480164,
+        "zero_point": 0
+      },
+      "wear_depth_um": {
+        "scale": 3.0739455223083496,
+        "zero_point": 0
+      }
+    }
+  }
+}
