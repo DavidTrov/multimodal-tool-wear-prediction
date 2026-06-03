@@ -276,10 +276,10 @@ def process_budget(budget, calib_samples):
     from onnxruntime.quantization import quantize_static, QuantFormat, QuantType
 
     ckpt_path  = CKPT_DIR / f"resnet_qat_int8_{budget}.pt"
-    fp32_onnx  = CKPT_DIR / f"resnet_{budget}_fp32.onnx"
-    int8_onnx  = CKPT_DIR / f"resnet_{budget}_int8.onnx"
-    tflite_out = CKPT_DIR / f"resnet_{budget}_int8_nxp.tflite"
-    tflite_io  = CKPT_DIR / f"resnet_{budget}_int8_nxp_io.tflite"
+    fp32_onnx  = CKPT_DIR / f"resnet_{budget}_qat_fp32.onnx"
+    int8_onnx  = CKPT_DIR / f"resnet_{budget}_qat_int8.onnx"
+    tflite_out = CKPT_DIR / f"resnet_{budget}_qat_int8_nxp.tflite"
+    tflite_io  = CKPT_DIR / f"resnet_{budget}_qat_int8_nxp_io.tflite"
 
     if not ckpt_path.exists():
         print(f"  SKIP — checkpoint not found: {ckpt_path}")
@@ -448,7 +448,7 @@ def main():
               f"{str(tfl_test):>10} {str(tfl_io_test):>12} {fits:>9}")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = RESULTS_DIR / "static_quant_results.json"
+    out_path = RESULTS_DIR / "static_quant_results_qat.json"
     with open(out_path, "w") as f:
         json.dump(all_results, f, indent=2)
     print(f"\nResults saved to {out_path}")

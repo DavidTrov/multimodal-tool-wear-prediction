@@ -1,0 +1,10 @@
+{
+  "image": {
+    "scale": 0.020787402987480164,
+    "zero_point": 0
+  },
+  "wear_depth_um": {
+    "scale": 3.0739455223083496,
+    "zero_point": 0
+  }
+}
