@@ -1,0 +1,32 @@
+{
+  "split": "test",
+  "models": {
+    "fusion": "fusion_int8_qat_nxp_io.tflite",
+    "image": "resnet_2m_qat_int8_nxp_io.tflite"
+  },
+  "n_image": 247,
+  "n_fusion": 247,
+  "n_paired": 247,
+  "mae_fusion": 20.82886634278394,
+  "mae_image": 21.968037116865396,
+  "mae_difference": -1.1391707740814567,
+  "wilcoxon": {
+    "W": 15300.0,
+    "p_value": 0.9900622800472176
+  },
+  "bootstrap": {
+    "B": 10000,
+    "seed": 42,
+    "observed_diff": -1.1391707740814567,
+    "bootstrap_mean_diff": -1.142153181453948,
+    "ci95_low": -4.00933090877919,
+    "ci95_high": 1.5826401525180822,
+    "ci_excludes_zero": false,
+    "p_value": 0.4262
+  },
+  "cohens_d": {
+    "mean_diff": -1.139170774081458,
+    "std_diff": 22.509953181367223,
+    "cohens_d": -0.05060742529773073
+  }
+}
