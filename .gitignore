@@ -25,10 +25,11 @@ env/
 
 # Data / large files
 *.csv
-*.parquet
 *.h5
 *.ckpt
 *.pth
+.claude/
+docs/
 data/raw/
 
 # Jupyter
@@ -42,9 +43,6 @@ dist/
 # C build artifacts
 *.o
 *.out
-
-# Claude Code
-.claude/
 
 # Misc
 *.swp
