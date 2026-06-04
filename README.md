@@ -1,7 +1,7 @@
 # Edge AI for Predictive Maintenance in CNC Metal Processing
 
 **Bachelor Thesis — Maastricht University, 2026**  
-Author: David Dimitrov
+Author: David Dimitrov;
 Supervisors: Marcin Pietrasik & Charis Kouzinopoulos
 
 A feasibility study on deploying deep learning tool-wear prediction models to a resource-constrained microcontroller (NXP FRDM-MCXN947, Cortex-M33 @ 150 MHz, 2 MB flash, 512 KB SRAM).
