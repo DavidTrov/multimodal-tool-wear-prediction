@@ -91,7 +91,7 @@ Compression pipeline: structured pruning → knowledge distillation → QAT → 
 | Compressed 1.5M (QAT) | 27.61 µm | **34.52 ± 34.15 µm** | 1,458 KB |
 | Compressed 1M (QAT) | 28.30 µm | **29.46 ± 27.07 µm** | 970 KB |
 
-Checkpoints and TFLite artifacts in `image/compression/checkpoints/`.
+Deployable INT8-I/O TFLite artifact: **`image/compression/checkpoints/resnet_2m_qat_int8_nxp_io.tflite`** (2M budget; other budgets and FP32/ONNX checkpoints alongside it).
 
 ### Sensor-Only (MultiScaleSensorCNN with SE attention)
 
@@ -101,7 +101,7 @@ Input: 5-channel CWT scalogram [5 × 64 × 64]. GroupNorm + SE attention left as
 |---|---|---|---|
 | MultiScaleSensorCNN (SE) | 29.27 ± 25.83 µm | **28.86 ± 25.78 µm** | 238 KB |
 
-Checkpoints and TFLite artifact in `sensor/multiscale/checkpoints/`.
+Deployable INT8-I/O TFLite artifact: **`sensor/deployment/checkpoints/sensor_multiscale_int8_nxp_io.tflite`** (source checkpoint in `sensor/multiscale/checkpoints/phase4_multiscale_sgdm_best.pt`).
 
 ### Fusion (Two-Tower, best deployable model)
 
@@ -111,7 +111,7 @@ Image encoder (compressed ResNet) + scalogram encoder (MultiScaleSensorCNN) join
 |---|---|---|---|
 | Two-tower fusion | 15.55 µm | **20.33 ± 20.43 µm** | 1,230 KB |
 
-This is the primary deployed model. TFLite artifact with full-integer INT8 I/O in `fusion/deployment/checkpoints/fusion_int8_qat_nxp_io.tflite`.
+This is the primary deployed model. Deployable INT8-I/O TFLite artifact: **`fusion/deployment/checkpoints/fusion_int8_qat_nxp_io.tflite`**.
 
 ---
 
@@ -227,13 +227,13 @@ python fusion/deployment/send_fusion_uart.py \
 
 ## Deployed Model Summary
 
-| Model | Test MAE (INT8) | Flash | Fits 2 MB |
-|---|---|---|---|
-| ResNet18 2M QAT | 21.97 µm | 1,934 KB | ✓ |
-| ResNet18 1.5M QAT | 34.52 µm | 1,458 KB | ✓ |
-| ResNet18 1M QAT | 29.46 µm | 970 KB | ✓ |
-| MultiScaleSensorCNN | 28.86 µm | 238 KB | ✓ |
-| **Two-tower fusion** | **20.33 µm** | **1,230 KB** | **✓** |
+| Model | Test MAE (INT8) | Flash | Fits 2 MB | Deployable INT8-I/O TFLite |
+|---|---|---|---|---|
+| ResNet18 2M QAT | 21.97 µm | 1,934 KB | ✓ | `image/compression/checkpoints/resnet_2m_qat_int8_nxp_io.tflite` |
+| ResNet18 1.5M QAT | 34.52 µm | 1,458 KB | ✓ | `image/compression/checkpoints/resnet_1p5m_qat_int8_nxp_io.tflite` |
+| ResNet18 1M QAT | 29.46 µm | 970 KB | ✓ | `image/compression/checkpoints/resnet_1m_qat_int8_nxp_io.tflite` |
+| MultiScaleSensorCNN | 28.86 µm | 238 KB | ✓ | `sensor/deployment/checkpoints/sensor_multiscale_int8_nxp_io.tflite` |
+| **Two-tower fusion** | **20.33 µm** | **1,230 KB** | **✓** | **`fusion/deployment/checkpoints/fusion_int8_qat_nxp_io.tflite`** |
 
 The two-tower fusion model is the primary deployment target — it achieves the best accuracy while fitting comfortably within the 2 MB flash constraint.
 
