@@ -43,7 +43,7 @@ from fusion.two_tower.model import MultiScaleFusionModel
 DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-RESULTS_DIR   = ROOT / "results"
+RESULTS_DIR   = Path(__file__).parent / "results"
 
 BATCH_SIZE  = 16
 NUM_WORKERS = 0

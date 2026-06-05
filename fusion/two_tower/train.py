@@ -37,11 +37,11 @@ from src.metrics import mae
 DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR      = ROOT / "checkpoints"
+CKPT_DIR      = ROOT / "fusion" / "two_tower" / "checkpoints"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
-PHASE1_CKPT = CKPT_DIR / "phase1_best.pt"
-PHASE4_CKPT = CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
+PHASE1_CKPT = ROOT / "image" / "baseline" / "checkpoints" / "phase1_best.pt"
+PHASE4_CKPT = ROOT / "sensor" / "multiscale" / "checkpoints" / "phase4_multiscale_sgdm_best.pt"
 CKPT_PATH   = CKPT_DIR / "phase5_multiscale_fusion_best.pt"
 
 LR           = 3e-3   # fusion head + LayerNorms (only trainable params)

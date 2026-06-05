@@ -9,7 +9,7 @@ Three deployable INT8 models (full-integer INT8-I/O TFLite — the artifacts tha
 ship to the MCU, NOT the FP32 versions):
     fusion : fusion/deployment/checkpoints/fusion_int8_qat_nxp_io.tflite        (≈20.8 µm)
     image  : image/compression/checkpoints/resnet_2m_qat_int8_nxp_io.tflite     (≈22.0 µm)
-    sensor : sensor/multiscale/checkpoints/sensor_multiscale_int8_nxp_io.tflite (≈28.9 µm)
+    sensor : sensor/deployment/checkpoints/sensor_multiscale_int8_nxp_io.tflite (≈28.9 µm)
 
 Two paired comparisons are reported, each negative ⇒ the first model is better:
     fusion vs sensor :  d[i] = e_fusion[i] - e_sensor[i]
@@ -64,7 +64,7 @@ from statistical_significance import (
 
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-SENSOR_TFLITE = ROOT / "sensor" / "multiscale" / "checkpoints" / "sensor_multiscale_int8_nxp_io.tflite"
+SENSOR_TFLITE = ROOT / "sensor" / "deployment" / "checkpoints" / "sensor_multiscale_int8_nxp_io.tflite"
 
 IMAGE_TFLITE  = ROOT / "image" / "compression" / "checkpoints" / "resnet_2m_qat_int8_nxp_io.tflite"
 FUSION_TFLITE = ROOT / "fusion" / "deployment" / "checkpoints" / "fusion_int8_qat_nxp_io.tflite"

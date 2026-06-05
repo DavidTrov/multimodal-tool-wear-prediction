@@ -21,7 +21,7 @@ from image.baseline.dataset import MATWIDataset
 from image.baseline.model import build_resnet18_regressor
 
 DATA_ROOT   = ROOT / "data" / "raw"
-CKPT_PATH   = ROOT / "checkpoints" / "phase1_best.pt"
+CKPT_PATH   = ROOT / "image" / "baseline" / "checkpoints" / "phase1_best.pt"
 RESULTS_DIR = Path(__file__).parent / "results"
 BATCH_SIZE  = 16
 NUM_WORKERS = 4

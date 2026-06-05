@@ -24,7 +24,7 @@ from fusion.two_tower.model import MultiScaleFusionModel
 DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_PATH     = ROOT / "checkpoints" / "phase5_multiscale_fusion_best.pt"
+CKPT_PATH     = ROOT / "fusion" / "two_tower" / "checkpoints" / "phase5_multiscale_fusion_best.pt"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
 NUM_WORKERS = 0

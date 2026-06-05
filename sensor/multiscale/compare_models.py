@@ -43,7 +43,7 @@ from sensor.cnn.model import SensorCNNRegressor
 DATA_ROOT      = ROOT / "data" / "raw"
 SCALOGRAM_DIR  = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH  = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR       = ROOT / "checkpoints"
+CKPT_DIR       = ROOT / "sensor" / "multiscale" / "checkpoints"
 RESULTS_DIR    = Path(__file__).parent / "results"
 
 ARCH_REGISTRY = {
@@ -206,7 +206,7 @@ def run(split: str, arch: str, optim_name: str, no_plots: bool):
     print(f"Sensor dataset : {len(sensor_ds)} samples")
 
     # ── Models ─────────────────────────────────────────────────────────────────
-    img_ckpt    = CKPT_DIR / "resnet_qat_int8_2m.pt"
+    img_ckpt    = ROOT / "image" / "compression" / "checkpoints" / "resnet_qat_int8_2m.pt"
     sensor_ckpt = CKPT_DIR / f"phase4_{arch}_{optim_name}_best.pt"
 
     for p in (img_ckpt, sensor_ckpt):

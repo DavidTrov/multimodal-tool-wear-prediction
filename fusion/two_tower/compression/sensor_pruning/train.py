@@ -52,7 +52,7 @@ from src.metrics import mae
 DATA_ROOT     = ROOT / "data" / "raw"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR      = ROOT / "checkpoints"
+CKPT_DIR      = ROOT / "sensor" / "multiscale" / "checkpoints"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
 DEFAULT_SPARSITY        = 0.70

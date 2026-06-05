@@ -46,7 +46,7 @@ from image.baseline.model import build_resnet18_regressor
 from src.metrics import mae
 
 DATA_ROOT   = ROOT / "data" / "raw"
-CKPT_DIR    = ROOT / "checkpoints"
+CKPT_DIR    = ROOT / "image" / "compression" / "checkpoints"
 RESULTS_DIR = Path(__file__).parent / "results"
 
 DEFAULT_ALPHA  = 0.5    # balance between ground-truth and teacher supervision
@@ -110,7 +110,7 @@ def run(alpha: float, epochs: int, student_ckpt: str, suffix: str):
     print(f"Output : {ckpt_name}\n")
 
     # ── Load teacher (frozen original ResNet-18) ──────────────────────────────
-    phase1_ckpt = CKPT_DIR / "phase1_best.pt"
+    phase1_ckpt = ROOT / "image" / "baseline" / "checkpoints" / "phase1_best.pt"
     if not phase1_ckpt.exists():
         sys.exit(f"Teacher checkpoint not found: {phase1_ckpt}")
 
@@ -219,9 +219,9 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int,   default=DEFAULT_EPOCHS,
                         help="Training epochs (default: 40)")
     parser.add_argument("--student-ckpt", type=str,
-                        default=str(ROOT / "checkpoints" / "pruned.pt"),
+                        default=str(ROOT / "image" / "compression" / "checkpoints" / "pruned.pt"),
                         help="Path to the pruned student checkpoint "
-                             "(default: checkpoints/pruned.pt)")
+                             "(default: image/compression/checkpoints/pruned.pt)")
     parser.add_argument("--output-suffix", type=str, default="",
                         help="Suffix appended to output filenames "
                              "(e.g. '_90' → resnet_distilled_90.pt). "

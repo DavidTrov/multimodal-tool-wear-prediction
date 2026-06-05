@@ -27,7 +27,7 @@ from src.metrics import mae
 
 # ── Config ────────────────────────────────────────────────────────────────────
 DATA_ROOT   = ROOT / "data" / "raw"
-CKPT_DIR    = ROOT / "checkpoints"
+CKPT_DIR    = ROOT / "image" / "baseline" / "checkpoints"
 RESULTS_DIR = Path(__file__).parent / "results"
 
 LR          = 1e-4

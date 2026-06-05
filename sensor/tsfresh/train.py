@@ -23,7 +23,7 @@ from xgboost import XGBRegressor
 ROOT        = Path(__file__).resolve().parents[2]
 FEATURES    = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
 RESULTS_DIR = Path(__file__).parent / "results"
-CKPT_DIR    = ROOT / "checkpoints"
+CKPT_DIR    = ROOT / "sensor" / "tsfresh" / "checkpoints"
 
 TRAIN_SETS = [1, 2, 5, 7, 8, 10, 11]
 VAL_SETS   = [3, 6, 12]

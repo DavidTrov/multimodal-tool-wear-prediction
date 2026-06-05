@@ -26,7 +26,7 @@ Source checkpoint
     sensor/multiscale/checkpoints/phase4_multiscale_sgdm_best.pt
     (state_dict for MultiScaleSensorCNN, attention="se")
 
-Outputs (sensor/multiscale/checkpoints/)
+Outputs (sensor/deployment/checkpoints/)
 ----------------------------------------
     sensor_multiscale_fp32.onnx
     sensor_multiscale_int8.onnx
@@ -37,7 +37,7 @@ Outputs (sensor/multiscale/checkpoints/)
 
 Usage
 -----
-    python sensor/multiscale/export_onnx_static_sensor.py
+    python sensor/deployment/export_onnx_static_sensor.py
 
 Run from the thesis root.
 """
@@ -62,10 +62,14 @@ from src.metrics import mae  # noqa: F401  (kept for parity; eval uses abs-error
 
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR      = ROOT / "sensor" / "multiscale" / "checkpoints"
+# The trained source checkpoint stays with the other sensor models …
+SRC_CKPT_DIR  = ROOT / "sensor" / "multiscale" / "checkpoints"
+# … while every export artifact this script PRODUCES lives in the deployment
+# package, next to this script.
+CKPT_DIR      = ROOT / "sensor" / "deployment" / "checkpoints"
 RESULTS_DIR   = Path(__file__).parent / "results"
 
-SRC_CKPT = CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
+SRC_CKPT = SRC_CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
 
 OPSET_VERSION         = 18
 DEFAULT_CALIB_SAMPLES = 200

@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 LABELS        = ROOT / "data" / "raw" / "labels.csv"
-OUT_DIR       = ROOT / "experiments" / "cwt_c" / "calibration_data"
+OUT_DIR       = Path(__file__).parent / "calibration_data"
 
 OUT_DIR.mkdir(exist_ok=True)
 df = pd.read_csv(LABELS).dropna(subset=["wear"]).reset_index(drop=True)

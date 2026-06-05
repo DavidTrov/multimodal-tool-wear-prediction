@@ -57,7 +57,7 @@ from image.baseline.model import build_resnet18_regressor
 from src.metrics import mae
 
 DATA_ROOT   = ROOT / "data" / "raw"
-CKPT_DIR    = ROOT / "checkpoints"
+CKPT_DIR    = ROOT / "image" / "compression" / "checkpoints"
 RESULTS_DIR = Path(__file__).parent / "results"
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
@@ -450,7 +450,7 @@ def run(args):
     print()
 
     # ── Load baseline ─────────────────────────────────────────────────────────
-    phase1_ckpt = CKPT_DIR / "phase1_best.pt"
+    phase1_ckpt = ROOT / "image" / "baseline" / "checkpoints" / "phase1_best.pt"
     if not phase1_ckpt.exists():
         sys.exit(f"Phase-1 checkpoint not found: {phase1_ckpt}")
 

@@ -56,8 +56,8 @@ sys.path.insert(0, str(ROOT))
 from sensor.multiscale.model import MultiScaleSensorCNN
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-DEFAULT_CKPT  = ROOT / "checkpoints" / "best" / "phase4_multiscale_sgdm_best_25.pt"
-OUT_DIR       = ROOT / "checkpoints" / "onnx"
+DEFAULT_CKPT  = ROOT / "sensor" / "multiscale" / "checkpoints" / "phase4_multiscale_sgdm_best_25.pt"
+OUT_DIR       = ROOT / "sensor" / "deployment" / "onnx"
 SCALOGRAM_DIR = ROOT / "data" / "processed" / "scalograms"
 
 OPSET    = 18

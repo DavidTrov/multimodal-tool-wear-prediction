@@ -7,8 +7,8 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 from sensor.multiscale.model import MultiScaleSensorCNN
 
-CKPT = ROOT / "checkpoints" / "best" / "phase4_multiscale_sgdm_best_25.pt"
-OUT  = ROOT / "experiments" / "cwt_c" / "sensor_cnn.onnx"
+CKPT = ROOT / "sensor" / "multiscale" / "checkpoints" / "phase4_multiscale_sgdm_best_25.pt"
+OUT  = Path(__file__).parent / "sensor_cnn.onnx"
 
 model = MultiScaleSensorCNN()
 model.load_state_dict(torch.load(CKPT, map_location="cpu", weights_only=True))

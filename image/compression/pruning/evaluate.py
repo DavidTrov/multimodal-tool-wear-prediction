@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT))
 from image.baseline.dataset import MATWIDataset
 
 DATA_ROOT   = ROOT / "data" / "raw"
-CKPT_PATH   = ROOT / "checkpoints" / "distilled.pt"
+CKPT_PATH   = ROOT / "image" / "compression" / "checkpoints" / "distilled.pt"
 RESULTS_DIR = Path(__file__).parent / "results"
 BATCH_SIZE  = 16
 NUM_WORKERS = 0

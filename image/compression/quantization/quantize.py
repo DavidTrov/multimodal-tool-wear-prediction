@@ -43,7 +43,7 @@ from image.baseline.dataset import MATWIDataset
 from src.metrics import mae
 
 DATA_ROOT   = ROOT / "data" / "raw"
-CKPT_DIR    = ROOT / "checkpoints"
+CKPT_DIR    = ROOT / "image" / "compression" / "checkpoints"
 RESULTS_DIR = Path(__file__).parent / "results"
 BATCH_SIZE  = 16
 NUM_WORKERS = 0

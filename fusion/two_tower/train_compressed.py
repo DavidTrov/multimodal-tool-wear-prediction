@@ -42,11 +42,11 @@ from src.metrics import mae
 DATA_ROOT       = ROOT / "data" / "raw"
 SCALOGRAM_DIR   = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH   = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR        = ROOT / "checkpoints"
+CKPT_DIR        = ROOT / "fusion" / "two_tower" / "checkpoints"
 RESULTS_DIR     = Path(__file__).parent / "results_compressed"
 
-COMPRESSED_CKPT = CKPT_DIR / "resnet_distilled_2m.pt"
-PHASE4_CKPT     = CKPT_DIR / "phase4_multiscale_sgdm_best.pt"
+COMPRESSED_CKPT = ROOT / "image" / "compression" / "checkpoints" / "resnet_distilled_2m.pt"
+PHASE4_CKPT     = ROOT / "sensor" / "multiscale" / "checkpoints" / "phase4_multiscale_sgdm_best.pt"
 CKPT_PATH       = CKPT_DIR / "phase5_compressed_fusion_best.pt"
 
 # Compressed ResNet avgpool output dimensionality (verified empirically)

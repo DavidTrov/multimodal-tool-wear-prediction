@@ -114,8 +114,8 @@ def build(n_samples: int = N_DEFAULT, seed: int = 42) -> None:
     print(f"Saved {len(npy_files)} files → {OUT_DIR}")
 
     print(f"\nRun quantization:")
-    onnx_path = ROOT / "checkpoints" / "onnx" / "phase4_multiscale_sgdm_best_25.onnx"
-    int8_path  = ROOT / "checkpoints" / "onnx" / "phase4_multiscale_sgdm_best_25_int8.onnx"
+    onnx_path = ROOT / "sensor" / "deployment" / "onnx" / "phase4_multiscale_sgdm_best_25.onnx"
+    int8_path  = ROOT / "sensor" / "deployment" / "onnx" / "phase4_multiscale_sgdm_best_25_int8.onnx"
     print(f"  python -m onnx2quant {onnx_path} \\")
     print(f"      -c scalogram;{OUT_DIR}/ \\")
     print(f"      --per-channel \\")

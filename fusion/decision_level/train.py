@@ -45,7 +45,7 @@ from src.metrics import mae
 DATA_ROOT      = ROOT / "data" / "raw"
 SCALOGRAM_DIR  = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH  = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-CKPT_DIR       = ROOT / "checkpoints"
+CKPT_DIR       = ROOT / "fusion" / "decision_level" / "checkpoints"
 RESULTS_DIR    = Path(__file__).parent / "results"
 
 LR          = 1e-3
@@ -81,7 +81,7 @@ def run(resume: bool):
     # ── Model ─────────────────────────────────────────────────────────────────
     model = ScalogramFusionModel().to(device)
 
-    phase1_ckpt = CKPT_DIR / "phase1_best.pt"
+    phase1_ckpt = ROOT / "image" / "baseline" / "checkpoints" / "phase1_best.pt"
     if phase1_ckpt.exists():
         model.load_phase1_weights(phase1_ckpt, device=device)
         print(f"Loaded Phase-1 weights from {phase1_ckpt}")

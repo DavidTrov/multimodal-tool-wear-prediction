@@ -31,8 +31,8 @@ try:
 except ImportError:
     sys.exit("ai_edge_litert not found. Run: pip install ai-edge-litert")
 
-CKPT_PATH    = ROOT / "checkpoints" / "best" / "phase4_multiscale_sgdm_best_25.pt"
-TFLITE_PATH  = ROOT / "checkpoints" / "onnx" / "phase4_multiscale_sgdm_best_25_int8.tflite"
+CKPT_PATH    = ROOT / "sensor" / "multiscale" / "checkpoints" / "phase4_multiscale_sgdm_best_25.pt"
+TFLITE_PATH  = ROOT / "sensor" / "deployment" / "onnx" / "phase4_multiscale_sgdm_best_25_int8.tflite"
 SCALO_DIR    = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
 RESULTS_DIR  = Path(__file__).parent / "results"
