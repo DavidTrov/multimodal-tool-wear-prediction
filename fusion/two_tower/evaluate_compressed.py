@@ -28,8 +28,8 @@ from fusion.two_tower.model import MultiScaleFusionModel
 DATA_ROOT       = ROOT / "data" / "raw"
 SCALOGRAM_DIR   = ROOT / "data" / "processed" / "scalograms"
 FEATURES_PATH   = ROOT / "data" / "processed" / "sensor_features_physics.parquet"
-COMPRESSED_CKPT = ROOT / "checkpoints" / "resnet_distilled_2m.pt"
-CKPT_PATH       = ROOT / "checkpoints" / "phase5_compressed_fusion_best.pt"
+COMPRESSED_CKPT = ROOT / "image" / "compression" / "checkpoints" / "resnet_distilled_2m.pt"
+CKPT_PATH       = ROOT / "fusion" / "two_tower" / "checkpoints" / "phase5_compressed_fusion_best.pt"
 RESULTS_DIR     = Path(__file__).parent / "results_compressed"
 
 IMAGE_FEAT_DIM = 309

@@ -1,0 +1,41 @@
+{
+  "split": "test",
+  "precision": "fp32",
+  "research_question": "RQ3",
+  "models": {
+    "fusion": {
+      "weights": "phase5_compressed_fusion_best.pt",
+      "image_encoder": "resnet_distilled_2m.pt",
+      "image_feat_dim": 309
+    },
+    "image": {
+      "weights": "resnet_qat_int8_2m.pt",
+      "note": "fc dequantized to FP32"
+    }
+  },
+  "n_image": 247,
+  "n_fusion": 247,
+  "n_paired": 247,
+  "mae_fusion": 15.55216773029281,
+  "mae_image": 19.065040171387707,
+  "mae_difference": -3.5128724410948973,
+  "wilcoxon": {
+    "W": 12977.0,
+    "p_value": 0.03760286440155719
+  },
+  "bootstrap": {
+    "B": 10000,
+    "seed": 42,
+    "observed_diff": -3.5128724410948973,
+    "bootstrap_mean_diff": -3.5145268166190706,
+    "ci95_low": -5.836876107999672,
+    "ci95_high": -1.3374464405693025,
+    "ci_excludes_zero": true,
+    "p_value": 0.0014
+  },
+  "cohens_d": {
+    "mean_diff": -3.5128724410948964,
+    "std_diff": 18.050164342303233,
+    "cohens_d": -0.1946171998479792
+  }
+}
